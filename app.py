@@ -14,14 +14,57 @@ def home():
         <title>Rifat's Website</title>
 
         <style>
-            body {
-                background: #101827;
-                color: white;
-                text-align: center;
-                padding: 40px 10px;
-                font-family: sans-serif;
-                margin: 0;
-            }
+            
+body {
+    background: linear-gradient(
+        -45deg,
+        #050816,
+        #101827,
+        #171044,
+        #062b49
+    );
+    background-size: 400% 400%;
+    animation: spaceBackground 14s ease infinite;
+    color: white;
+    text-align: center;
+    padding: 40px 10px;
+    font-family: sans-serif;
+    margin: 0;
+    min-height: 100vh;
+    box-sizing: border-box;
+    overflow-x: hidden;
+    position: relative;
+    isolation: isolate;
+}
+
+body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background-image:
+        radial-gradient(2px 2px at 20% 30%, white 70%, transparent),
+        radial-gradient(2px 2px at 70% 60%, #38bdf8 70%, transparent),
+        radial-gradient(1px 1px at 40% 80%, white 70%, transparent),
+        radial-gradient(2px 2px at 85% 20%, #a78bfa 70%, transparent),
+        radial-gradient(1px 1px at 10% 70%, white 70%, transparent);
+    background-size: 250px 250px;
+    animation: starMove 18s linear infinite;
+    opacity: 0.75;
+}
+
+@keyframes spaceBackground {
+    0%   { background-position: 0% 50%; }
+    50%  { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+}
+
+@keyframes starMove {
+    from { transform: translateY(0); }
+    to   { transform: translateY(-250px); }
+}
+
 
             .animated-logo {
                 width: 220px;
@@ -118,5 +161,5 @@ def home():
     """
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    app.run(host="0.0.0.0", port=5000) 
     
