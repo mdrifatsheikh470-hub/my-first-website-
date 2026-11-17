@@ -1,11 +1,14 @@
 
-from flask import Flask, request
-from email.message import EmailMessage
-import smtplib
 import os
-import re
+import smtplib
+import random
+import html
+from email.message import EmailMessage
+from flask import Flask, request
 
 app = Flask(__name__)
+
+EMAIL_TO = "mdrifatsheikh470@gmail.com"
 
 
 @app.route("/", methods=["GET", "POST"])
@@ -19,425 +22,496 @@ def home():
             language = "bn"
 
         name = request.form.get("name", "").strip()
-        email = request.form.get("email", "").strip()
+        sender_email = request.form.get("email", "").strip()
         message = request.form.get("message", "").strip()
 
-        if not name or not email or not message:
-            msg = "সব ঘর পূরণ করুন।" if language == "bn" else "Please fill in all fields."
-            status_html = f'<p class="error" role="alert">{msg}</p>'
-
-        elif (
-            len(name) > 100
-            or len(email) > 254
-            or len(message) > 5000
-            or not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email)
-        ):
-            msg = "তথ্য সঠিকভাবে লিখুন।" if language == "bn" else "Please enter valid information."
-            status_html = f'<p class="error" role="alert">{msg}</p>'
-
+        if not name or not sender_email or not message:
+            status = (
+                "সব ঘর পূরণ করুন।"
+                if language == "bn"
+                else "Please fill in all fields."
+            )
+            status_html = (
+                '<div class="notice error">'
+                + html.escape(status)
+                + "</div>"
+            )
+        elif len(name) > 100 or len(sender_email) > 254 or len(message) > 5000:
+            status = (
+                "আপনার লেখা অনেক বড়। আবার চেষ্টা করুন।"
+                if language == "bn"
+                else "Your message is too long. Please try again."
+            )
+            status_html = (
+                '<div class="notice error">'
+                + html.escape(status)
+                + "</div>"
+            )
+        elif "\n" in sender_email or "\r" in sender_email:
+            status = (
+                "সঠিক ইমেইল ঠিকানা দিন।"
+                if language == "bn"
+                else "Please enter a valid email address."
+            )
+            status_html = (
+                '<div class="notice error">'
+                + html.escape(status)
+                + "</div>"
+            )
         else:
-            username = os.environ.get("MAIL_USERNAME", "")
-            password = os.environ.get("MAIL_PASSWORD", "")
-            recipient = "mdrifatsheikh470@gmail.com"
+            mail_user = os.environ.get("MAIL_USERNAME", "")
+            mail_password = os.environ.get("MAIL_PASSWORD", "")
 
-            if not username or not password:
-                msg = (
-                    "ইমেইল সেটআপ এখনো সম্পূর্ণ হয়নি।"
+            if not mail_user or not mail_password:
+                status = (
+                    "ইমেইল সেটআপ সম্পূর্ণ হয়নি। পরে আবার চেষ্টা করুন।"
                     if language == "bn"
-                    else "Email setup is not complete yet."
+                    else "Email is not configured yet. Please try later."
                 )
-                status_html = f'<p class="error" role="alert">{msg}</p>'
+                status_html = (
+                    '<div class="notice error">'
+                    + html.escape(status)
+                    + "</div>"
+                )
             else:
-                mail = EmailMessage()
-                mail["Subject"] = "New Website Contact Message"
-                mail["From"] = username
-                mail["To"] = recipient
-                mail["Reply-To"] = email
-                mail.set_content(
-                    "A visitor sent a message from your website.\n\n"
-                    f"Name: {name}\n"
-                    f"Email: {email}\n\n"
-                    f"Message:\n{message}"
-                )
-
                 try:
-                    with smtplib.SMTP(
-                        "smtp.gmail.com", 587, timeout=20
-                    ) as server:
-                        server.starttls()
-                        server.login(username, password)
-                        server.send_message(mail)
-
-                    msg = (
-                        "আপনার মেসেজ পাঠানো হয়েছে! ধন্যবাদ।"
-                        if language == "bn"
-                        else "Your message has been sent! Thank you."
+                    email_message = EmailMessage()
+                    email_message["Subject"] = "Website Contact Form"
+                    email_message["From"] = mail_user
+                    email_message["To"] = EMAIL_TO
+                    email_message.set_content(
+                        f"Name: {name}\n"
+                        f"Email: {sender_email}\n\n"
+                        f"Message:\n{message}"
                     )
-                    status_html = f'<p class="success" role="status">{msg}</p>'
 
+                    with smtplib.SMTP_SSL(
+                        "smtp.gmail.com", 465, timeout=20
+                    ) as smtp:
+                        smtp.login(mail_user, mail_password)
+                        smtp.send_message(email_message)
+
+                    status = (
+                        "আপনার মেসেজ পাঠানো হয়েছে। ধন্যবাদ!"
+                        if language == "bn"
+                        else "Your message has been sent. Thank you!"
+                    )
+                    status_html = (
+                        '<div class="notice success">'
+                        + html.escape(status)
+                        + "</div>"
+                    )
                 except Exception:
-                    app.logger.exception("Contact email delivery failed")
-                    msg = (
+                    app.logger.exception("Contact form email failed")
+                    status = (
                         "মেসেজ পাঠানো যায়নি। পরে আবার চেষ্টা করুন।"
                         if language == "bn"
-                        else "Message could not be sent. Please try again later."
+                        else "Message could not be sent. Please try again."
                     )
-                    status_html = f'<p class="error" role="alert">{msg}</p>'
+                    status_html = (
+                        '<div class="notice error">'
+                        + html.escape(status)
+                        + "</div>"
+                    )
 
-    page = r"""
-<!DOCTYPE html>
+    page = r"""<!DOCTYPE html>
 <html lang="bn">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="theme-color" content="#050816">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#070b1b">
+<meta name="description" content="Official personal website of MD Rifat Sheikh.">
 <title>MD Rifat Sheikh | Official Website</title>
 
 <style>
-* { box-sizing: border-box; }
+:root {
+    --bg: #070b1b;
+    --panel: rgba(18, 27, 55, .75);
+    --text: #f4f7ff;
+    --muted: #b7c5e8;
+    --cyan: #55e7ff;
+    --purple: #a78bfa;
+    --border: rgba(132, 177, 255, .22);
+}
+
+* {
+    box-sizing: border-box;
+}
 
 html {
     scroll-behavior: smooth;
-    scroll-padding-top: 20px;
 }
 
 body {
     margin: 0;
     min-height: 100vh;
-    padding: 30px 14px;
-    color: white;
-    text-align: center;
-    font-family: Arial, sans-serif;
-    background: linear-gradient(-45deg,#050816,#101827,#171044,#062b49);
-    background-size: 400% 400%;
-    animation: backgroundMove 14s ease infinite;
+    overflow-x: hidden;
+    background:
+        radial-gradient(ellipse at 20% 15%, #172453 0%, transparent 42%),
+        radial-gradient(ellipse at 85% 70%, #25154b 0%, transparent 38%),
+        var(--bg);
+    color: var(--text);
+    font-family: Arial, "Noto Sans Bengali", sans-serif;
 }
 
-@keyframes backgroundMove {
-    0%,100% { background-position: 0% 50%; }
-    50% { background-position: 100% 50%; }
-}
-
-#page-loader {
+#spaceCanvas {
     position: fixed;
     inset: 0;
-    z-index: 9999;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 18px;
-    background: #050816;
-    transition: opacity .5s ease, visibility .5s ease;
-}
-
-#page-loader.loaded {
-    opacity: 0;
-    visibility: hidden;
+    width: 100%;
+    height: 100%;
+    z-index: 0;
     pointer-events: none;
 }
 
-.loader-ring {
-    width: 58px;
-    height: 58px;
-    border: 4px solid rgba(56,189,248,.18);
-    border-top-color: #38bdf8;
-    border-right-color: #818cf8;
+#mouseGlow {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    width: 320px;
+    height: 320px;
     border-radius: 50%;
-    animation: spinLoader .8s linear infinite;
+    background: radial-gradient(
+        circle,
+        rgba(68, 205, 255, .15),
+        rgba(139, 92, 246, .08) 42%,
+        transparent 72%
+    );
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    z-index: 1;
+    opacity: 0;
+    transition: opacity .25s;
 }
 
-@keyframes spinLoader {
-    to { transform: rotate(360deg); }
+#page {
+    position: relative;
+    z-index: 2;
 }
 
-.loader-title {
-    color: #7dd3fc;
-    font-weight: bold;
-    letter-spacing: 2px;
-}
-
-.page {
-    width: 100%;
-    max-width: 650px;
+header {
+    width: min(1100px, 92%);
     margin: auto;
-    animation: pageAppear .7s ease both;
+    padding: 22px 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 15px;
 }
 
-@keyframes pageAppear {
-    from { opacity: 0; transform: translateY(12px); }
-    to { opacity: 1; transform: translateY(0); }
+.brand {
+    font-size: 17px;
+    font-weight: 800;
+    color: var(--cyan);
+    letter-spacing: .5px;
 }
 
-.animated-logo {
+.lang-btn, .main-btn, .submit-btn, #topBtn {
+    border: 1px solid var(--border);
+    color: var(--text);
+    background: rgba(36, 48, 87, .8);
+    border-radius: 12px;
+    padding: 11px 16px;
+    font-size: 14px;
+    cursor: pointer;
+    transition: .25s ease;
+}
+
+.lang-btn:hover, .main-btn:hover, .submit-btn:hover, #topBtn:hover {
+    border-color: var(--cyan);
+    box-shadow: 0 0 22px rgba(85, 231, 255, .2);
+}
+
+.hero {
+    width: min(1000px, 92%);
+    margin: 35px auto 25px;
+    padding: 42px 20px;
+    text-align: center;
+}
+
+.logo-frame {
+    width: 150px;
+    height: 150px;
+    margin: 0 auto 24px;
+    border-radius: 50%;
+    padding: 4px;
+    background: linear-gradient(135deg, var(--cyan), var(--purple), #4266ff);
+    box-shadow: 0 0 35px rgba(85, 231, 255, .22);
+    animation: floatLogo 4s ease-in-out infinite;
+}
+
+.logo-frame img {
+    width: 100%;
+    height: 100%;
     display: block;
-    width: 220px;
-    max-width: 80%;
-    height: auto;
-    margin: 12px auto 20px;
-    animation: floatLogo 3s ease-in-out infinite;
-    filter: drop-shadow(0 0 12px rgba(56,189,248,.25));
-    transition: filter .3s ease;
-}
-
-.animated-logo:hover {
-    filter: drop-shadow(0 0 24px #38bdf8);
+    object-fit: cover;
+    border-radius: 50%;
+    background: #121a36;
 }
 
 @keyframes floatLogo {
-    0%,100% { transform: translateY(0); }
-    50% { transform: translateY(-10px); }
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-8px); }
 }
 
 h1 {
-    color: #7dd3fc;
-    font-size: clamp(27px,7vw,40px);
-    text-shadow: 0 0 18px #0284c7;
+    margin: 0;
+    font-size: clamp(32px, 6vw, 58px);
+    line-height: 1.2;
+    font-weight: 900;
+    letter-spacing: -.8px;
+    background: linear-gradient(90deg, #fff, var(--cyan), #c4b5fd);
+    background-clip: text;
+    -webkit-background-clip: text;
+    color: transparent;
 }
 
 .subtitle {
-    color: #cbd5e1;
-    line-height: 1.7;
+    color: var(--muted);
+    font-size: clamp(15px, 2.4vw, 19px);
+    margin: 18px auto 12px;
+    line-height: 1.8;
 }
 
-.clock-card, .contact-card {
-    max-width: 420px;
-    margin: 28px auto;
-    padding: 24px 18px;
-    border: 1px solid rgba(56,189,248,.55);
-    border-radius: 22px;
-    background: rgba(10,20,45,.82);
-    box-shadow: 0 0 25px rgba(56,189,248,.15);
-    transition: transform .3s ease, box-shadow .3s ease;
+.typing {
+    color: var(--cyan);
+    min-height: 28px;
+    margin: 8px 0 20px;
+    font-size: 16px;
 }
 
-.clock-card:hover, .contact-card:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 10px 35px rgba(56,189,248,.22);
+.clock-card {
+    width: fit-content;
+    max-width: 100%;
+    margin: 22px auto;
+    padding: 17px 24px;
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    background: rgba(11, 18, 41, .72);
+    backdrop-filter: blur(12px);
+    box-shadow: 0 12px 35px rgba(0, 0, 0, .15);
 }
 
-.clock-title {
-    color: #7dd3fc;
+.clock-label {
+    color: var(--muted);
     font-size: 13px;
-    letter-spacing: 3px;
-    margin-bottom: 12px;
+    margin-bottom: 8px;
 }
 
-#live-clock {
-    font-size: clamp(34px,9vw,48px);
-    font-weight: bold;
+#clock {
+    color: var(--cyan);
+    font-size: clamp(23px, 5vw, 34px);
+    font-weight: 800;
     font-variant-numeric: tabular-nums;
-    text-shadow: 0 0 18px #38bdf8;
 }
 
-#live-date {
-    color: #cbd5e1;
-    margin-top: 12px;
-    line-height: 1.7;
-}
-
-.time-zone {
-    color: #7dd3fc;
-    font-size: 11px;
-    margin-top: 10px;
-}
-
-.welcome-button, .send-button {
-    display: inline-block;
-    padding: 13px 22px;
-    border: 0;
-    border-radius: 11px;
-    background: linear-gradient(135deg,#38bdf8,#818cf8);
-    color: #07111f;
-    font-weight: bold;
-    cursor: pointer;
-    transition: transform .25s ease, box-shadow .25s ease;
-}
-
-.welcome-button:hover, .send-button:hover {
-    transform: translateY(-3px) scale(1.02);
-    box-shadow: 0 8px 24px rgba(56,189,248,.35);
-}
-
-.welcome-button:active, .send-button:active {
-    transform: scale(.97);
-}
-
-#language-toggle {
-    margin: 8px auto 16px;
-    border: 1px solid rgba(125,211,252,.5);
-    box-shadow: 0 0 15px rgba(56,189,248,.15);
-}
-
-.contact-card h2, .social-section h2 {
-    color: #e0f2fe;
-    margin-top: 0;
-}
-
-.contact-card p {
-    color: #cbd5e1;
-    line-height: 1.6;
-}
-
-.contact-form { text-align: left; }
-
-.contact-form label {
-    display: block;
-    margin: 15px 0 7px;
-    color: #e0f2fe;
+#date {
+    color: var(--muted);
     font-size: 14px;
+    margin-top: 7px;
 }
 
-.contact-form input, .contact-form textarea {
-    display: block;
+.section {
+    width: min(850px, 92%);
+    margin: 28px auto;
+    padding: 25px;
+    border: 1px solid var(--border);
+    border-radius: 22px;
+    background: var(--panel);
+    backdrop-filter: blur(12px);
+    box-shadow: 0 16px 50px rgba(0, 0, 0, .15);
+}
+
+.section h2 {
+    margin: 0 0 18px;
+    font-size: 23px;
+    text-align: center;
+}
+
+.socials {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.social-link {
+    min-width: 110px;
+    padding: 13px 16px;
+    text-decoration: none;
+    text-align: center;
+    color: white;
+    border: 1px solid var(--border);
+    border-radius: 13px;
+    background: rgba(27, 39, 75, .85);
+    font-size: 14px;
+    font-weight: 700;
+    transform-style: preserve-3d;
+    transition: border-color .25s, box-shadow .25s, background .25s;
+}
+
+.social-link:hover {
+    border-color: var(--cyan);
+    background: rgba(41, 61, 109, .95);
+    box-shadow: 0 12px 25px rgba(85, 231, 255, .16);
+}
+
+.social-link:focus-visible, button:focus-visible, input:focus-visible,
+textarea:focus-visible {
+    outline: 2px solid var(--cyan);
+    outline-offset: 3px;
+}
+
+form {
+    display: grid;
+    gap: 13px;
+}
+
+input, textarea {
     width: 100%;
-    padding: 13px;
-    border: 1px solid #334155;
-    border-radius: 10px;
-    background: #0b1225;
+    padding: 14px 15px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    background: rgba(5, 10, 27, .75);
     color: white;
     font: inherit;
-    transition: border-color .25s ease, box-shadow .25s ease;
 }
 
-.contact-form input:focus, .contact-form textarea:focus {
-    outline: none;
-    border-color: #38bdf8;
-    box-shadow: 0 0 0 3px rgba(56,189,248,.15);
+input::placeholder, textarea::placeholder {
+    color: #9eacd0;
 }
 
-.contact-form textarea {
+textarea {
     min-height: 130px;
     resize: vertical;
 }
 
-.send-button {
-    width: 100%;
-    margin-top: 20px;
-    font-size: 15px;
+.submit-btn {
+    background: linear-gradient(110deg, #2563eb, #7c3aed);
+    border: none;
+    font-weight: 800;
+    padding: 14px;
+}
+
+.notice {
+    padding: 12px 14px;
+    border-radius: 12px;
+    margin-bottom: 14px;
+    text-align: center;
+    line-height: 1.6;
 }
 
 .success {
-    color: #86efac !important;
-    background: rgba(22,163,74,.12);
-    padding: 12px;
-    border-radius: 10px;
+    background: rgba(22, 163, 74, .16);
+    border: 1px solid rgba(74, 222, 128, .45);
 }
 
 .error {
-    color: #fca5a5 !important;
-    background: rgba(220,38,38,.12);
-    padding: 12px;
-    border-radius: 10px;
+    background: rgba(220, 38, 38, .14);
+    border: 1px solid rgba(248, 113, 113, .45);
 }
 
-.social-section { margin: 38px auto 28px; }
-
-.social-icons {
-    display: flex;
-    justify-content: center;
-    flex-wrap: wrap;
-    gap: 18px 14px;
-    margin: 20px auto;
-}
-
-.social-item { width: 72px; }
-
-.social-icon {
-    width: 58px;
-    height: 58px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin: auto;
-    border: 1px solid rgba(255,255,255,.12);
-    border-radius: 17px;
-    color: white;
-    font-size: 28px;
-    font-weight: bold;
-    text-decoration: none;
-    transition: transform .25s ease, box-shadow .25s ease;
-}
-
-.social-icon:hover {
-    transform: translateY(-7px) scale(1.08);
-    box-shadow: 0 8px 22px rgba(56,189,248,.25);
-}
-
-.facebook { background: #1877F2; }
-.instagram {
-    background: linear-gradient(45deg,#feda75,#fa7e1e,#d62976,#962fbf,#4f5bd5);
-}
-.youtube { background: #ff0033; }
-.tiktok { background: #111; }
-.whatsapp { background: #128C7E; }
-
-.social-label {
-    color: #dbeafe;
-    font-size: 12px;
-    margin-top: 8px;
-}
-
-.footer {
-    margin-top: 30px;
-    padding: 20px 5px;
-    border-top: 1px solid #334155;
-    color: #94a3b8;
-    font-size: 12px;
+footer {
+    text-align: center;
+    padding: 25px 15px 35px;
+    color: var(--muted);
+    font-size: 13px;
     line-height: 1.8;
 }
 
-#back-to-top {
+#topBtn {
     position: fixed;
+    z-index: 5;
     right: 18px;
-    bottom: 20px;
+    bottom: 18px;
+    display: none;
+    width: 46px;
+    height: 46px;
+    padding: 0;
+    font-size: 21px;
+    border-radius: 50%;
+}
+
+#loader {
+    position: fixed;
+    inset: 0;
     z-index: 100;
-    width: 48px;
-    height: 48px;
-    border: 1px solid rgba(125,211,252,.6);
-    border-radius: 16px;
-    background: rgba(8,25,50,.92);
-    color: #7dd3fc;
-    font-size: 25px;
-    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #070b1b;
+    transition: opacity .4s ease, visibility .4s ease;
+}
+
+#loader.hidden {
     opacity: 0;
     visibility: hidden;
     pointer-events: none;
-    transform: translateY(12px);
-    transition: opacity .3s ease, visibility .3s ease,
-                transform .3s ease;
 }
 
-#back-to-top.visible {
-    opacity: 1;
-    visibility: visible;
-    pointer-events: auto;
-    transform: translateY(0);
+.loader-content {
+    text-align: center;
+    color: var(--cyan);
+    font-weight: 700;
 }
 
-#back-to-top:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 0 25px rgba(56,189,248,.4);
+.spinner {
+    width: 45px;
+    height: 45px;
+    margin: 0 auto 16px;
+    border: 3px solid rgba(85, 231, 255, .18);
+    border-top-color: var(--cyan);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
 }
 
-@media (max-width: 480px) {
-    body { padding: 22px 12px; }
-    .clock-card, .contact-card {
-        padding: 20px 14px;
-        border-radius: 18px;
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+@media (hover: hover) and (pointer: fine) {
+    .tilt-card {
+        transition: transform .18s ease, box-shadow .25s ease;
+        transform-style: preserve-3d;
     }
-    .social-icons { gap: 18px 10px; }
-    .social-item { width: 65px; }
-    .social-icon {
-        width: 52px;
-        height: 52px;
-        border-radius: 15px;
+}
+
+@media (max-width: 600px) {
+    header {
+        padding: 16px 0;
     }
-    #back-to-top {
-        right: 12px;
-        bottom: 14px;
-        width: 44px;
-        height: 44px;
+
+    .brand {
+        font-size: 14px;
+    }
+
+    .lang-btn {
+        padding: 9px 11px;
+        font-size: 12px;
+    }
+
+    .hero {
+        margin-top: 12px;
+        padding: 28px 8px;
+    }
+
+    .logo-frame {
+        width: 125px;
+        height: 125px;
+    }
+
+    .section {
+        padding: 20px 15px;
+        margin: 20px auto;
+    }
+
+    .social-link {
+        flex: 1 1 38%;
+        min-width: 0;
+    }
+
+    #mouseGlow {
+        display: none;
     }
 }
 
@@ -453,266 +527,249 @@ h1 {
 </head>
 
 <body>
+<canvas id="spaceCanvas" aria-hidden="true"></canvas>
+<div id="mouseGlow" aria-hidden="true"></div>
 
-<div id="page-loader" role="status">
-    <div class="loader-ring"></div>
-    <div class="loader-title">MD RIFAT SHEIKH</div>
-    <div id="loading-text" style="color:#94a3b8;font-size:13px">লোড হচ্ছে...</div>
-</div>
-
-<main class="page">
-
-<img src="/static/logo.png" alt="Rifat Logo" class="animated-logo">
-
-<h1>MD Rifat Sheikh</h1>
-<p class="subtitle" id="subtitle">আমার অফিসিয়াল ওয়েবসাইটে স্বাগতম ✨</p>
-
-<button id="language-toggle" class="welcome-button"
-        type="button" onclick="toggleLanguage()">
-    🌐 বাংলা | English
-</button>
-
-<div class="clock-card">
-    <div class="clock-title" id="clock-title">🕒 বাংলাদেশের সময়</div>
-    <div id="live-clock">00:00:00</div>
-    <div id="live-date">তারিখ লোড হচ্ছে...</div>
-    <div class="time-zone" id="timezone-label">UTC +06:00 · ঢাকা, বাংলাদেশ</div>
-</div>
-
-<button class="welcome-button" id="welcome-button" type="button"
-        onclick="showWelcome()">
-    ✨ এখানে চাপ দাও
-</button>
-
-<section class="contact-card">
-    <h2 id="contact-title">📩 যোগাযোগ করুন</h2>
-    <p id="contact-intro">আমাকে কোনো মেসেজ পাঠাতে চাইলে নিচের ফর্মটি পূরণ করুন।</p>
-
-    <!-- STATUS -->
-
-    <form class="contact-form" method="POST" action="/">
-        <input type="hidden" name="language" id="form-language" value="bn">
-
-        <label for="name" id="name-label">আপনার নাম</label>
-        <input id="name" name="name" type="text"
-               maxlength="100" required autocomplete="name">
-
-        <label for="email" id="email-label">আপনার ইমেইল</label>
-        <input id="email" name="email" type="email"
-               maxlength="254" required autocomplete="email">
-
-        <label for="message" id="message-label">আপনার মেসেজ</label>
-        <textarea id="message" name="message"
-                  maxlength="5000" required></textarea>
-
-        <button class="send-button" id="send-button" type="submit">
-            📩 মেসেজ পাঠান
-        </button>
-    </form>
-</section>
-
-<section class="social-section">
-    <h2 id="social-title">আমার সঙ্গে যোগাযোগ করুন 🌐</h2>
-
-    <div class="social-icons">
-        <div class="social-item">
-            <a class="social-icon facebook"
-               href="https://www.facebook.com/share/1FwFV17jmB/"
-               target="_blank" rel="noopener noreferrer"
-               aria-label="Facebook">f</a>
-            <div class="social-label">Facebook</div>
-        </div>
-
-        <div class="social-item">
-            <a class="social-icon instagram"
-               href="https://www.instagram.com/happy2538832?vrfl=MWg0YzRsd3lzZ3Fibw=="
-               target="_blank" rel="noopener noreferrer"
-               aria-label="Instagram">◎</a>
-            <div class="social-label">Instagram</div>
-        </div>
-
-        <div class="social-item">
-            <a class="social-icon youtube" href="#"
-               aria-label="YouTube">▶</a>
-            <div class="social-label">YouTube</div>
-        </div>
-
-        <div class="social-item">
-            <a class="social-icon tiktok" href="#"
-               aria-label="TikTok">♪</a>
-            <div class="social-label">TikTok</div>
-        </div>
-
-        <div class="social-item">
-            <a class="social-icon whatsapp" href="#"
-               aria-label="WhatsApp">✆</a>
-            <div class="social-label">WhatsApp</div>
-        </div>
+<div id="loader">
+    <div class="loader-content">
+        <div class="spinner"></div>
+        <div id="loadingText">ওয়েবসাইট লোড হচ্ছে...</div>
     </div>
-</section>
+</div>
 
-<footer class="footer">
-    <span id="footer-text">তৈরি করেছেন ❤️ MD Rifat Sheikh</span><br>
-    © <span id="year"></span> <span id="rights-text">সর্বস্বত্ব সংরক্ষিত</span>
-</footer>
+<div id="page">
+<header>
+    <div class="brand">✦ MD RIFAT SHEIKH</div>
+    <button class="lang-btn" id="languageBtn" type="button"
+            onclick="toggleLanguage()">🌐 বাংলা | English</button>
+</header>
 
+<main>
+    <section class="hero">
+        <div class="logo-frame">
+            <img src="/static/logo.png" alt="MD Rifat Sheikh Logo"
+                 onerror="this.style.display='none'">
+        </div>
+
+        <h1>MD Rifat Sheikh</h1>
+        <p class="subtitle" id="subtitle">
+            আমার ব্যক্তিগত ওয়েবসাইটে আপনাকে স্বাগতম
+        </p>
+        <div class="typing" id="typingText">Welcome to my universe ✨</div>
+
+        <div class="clock-card tilt-card">
+            <div class="clock-label" id="clockLabel">বাংলাদেশের বর্তমান সময়</div>
+            <div id="clock">--:--:--</div>
+            <div id="date">তারিখ লোড হচ্ছে...</div>
+        </div>
+
+        <a class="social-link" href="#social" id="exploreBtn"
+           style="display:inline-block; margin-top:10px;">
+           আমার সোশ্যাল মিডিয়া ↓
+        </a>
+    </section>
+
+    <section class="section tilt-card" id="social">
+        <h2 id="socialTitle">🌐 আমার সোশ্যাল মিডিয়া</h2>
+        <div class="socials">
+            <a class="social-link"
+               href="https://www.facebook.com/share/1FwFV17jmB/"
+               target="_blank" rel="noopener noreferrer">📘 Facebook</a>
+
+            <a class="social-link"
+               href="https://www.instagram.com/happy2538832?vrfl=MWg0YzRsd3lzZ3Fibw=="
+               target="_blank" rel="noopener noreferrer">📸 Instagram</a>
+
+            <a class="social-link"
+               href="https://www.youtube.com/"
+               target="_blank" rel="noopener noreferrer">▶ YouTube</a>
+
+            <a class="social-link"
+               href="https://www.tiktok.com/"
+               target="_blank" rel="noopener noreferrer">♪ TikTok</a>
+
+            <a class="social-link"
+               href="https://www.whatsapp.com/"
+               target="_blank" rel="noopener noreferrer">💬 WhatsApp</a>
+        </div>
+    </section>
+
+    <section class="section tilt-card" id="contact">
+        <h2 id="contactTitle">📩 আমার সঙ্গে যোগাযোগ করুন</h2>
+
+        <!-- STATUS -->
+
+        <form method="POST" action="/">
+            <input type="hidden" name="language" id="formLanguage" value="bn">
+
+            <input type="text" name="name" id="nameInput"
+                   placeholder="আপনার নাম" maxlength="100" required>
+
+            <input type="email" name="email" id="emailInput"
+                   placeholder="আপনার ইমেইল" maxlength="254" required>
+
+            <textarea name="message" id="messageInput"
+                      placeholder="আপনার মেসেজ লিখুন..."
+                      maxlength="5000" required></textarea>
+
+            <button type="submit" class="submit-btn" id="sendBtn">
+                মেসেজ পাঠান ✉️
+            </button>
+        </form>
+    </section>
 </main>
 
-<button id="back-to-top" type="button"
-        aria-label="পাতার উপরে যান" title="Back to Top">↑</button>
+<footer>
+    <div id="footerText">তৈরি করা হয়েছে ❤️ MD Rifat Sheikh-এর জন্য</div>
+    <div id="footerDate">© <span id="year"></span> MD Rifat Sheikh. All rights reserved.</div>
+</footer>
+</div>
+
+<button id="topBtn" type="button" title="উপরে যান"
+        aria-label="Back to top" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑</button>
 
 <script>
-let currentLanguage = "bn";
+(() => {
+    const canvas = document.getElementById("spaceCanvas");
+    const ctx = canvas.getContext("2d");
+    const glow = document.getElementById("mouseGlow");
+    const reduceMotion = window.matchMedia(
+        "(prefers-reduced-motion: reduce)"
+    ).matches;
 
-const translations = {
-    bn: {
-        subtitle: "আমার অফিসিয়াল ওয়েবসাইটে স্বাগতম ✨",
-        clockTitle: "🕒 বাংলাদেশের সময়",
-        dateLoading: "তারিখ লোড হচ্ছে...",
-        timezone: "UTC +06:00 · ঢাকা, বাংলাদেশ",
-        welcome: "✨ এখানে চাপ দাও",
-        welcomeMessage: "আমার ওয়েবসাইটে স্বাগতম! ❤️",
-        contactTitle: "📩 যোগাযোগ করুন",
-        contactIntro: "আমাকে কোনো মেসেজ পাঠাতে চাইলে নিচের ফর্মটি পূরণ করুন।",
-        name: "আপনার নাম",
-        email: "আপনার ইমেইল",
-        message: "আপনার মেসেজ",
-        send: "📩 মেসেজ পাঠান",
-        socialTitle: "আমার সঙ্গে যোগাযোগ করুন 🌐",
-        footer: "তৈরি করেছেন ❤️ MD Rifat Sheikh",
-        rights: "সর্বস্বত্ব সংরক্ষিত",
-        loading: "লোড হচ্ছে...",
-        top: "পাতার উপরে যান",
-        languageButton: "🌐 বাংলা | English"
-    },
-    en: {
-        subtitle: "Welcome to My Official Website ✨",
-        clockTitle: "🕒 BANGLADESH TIME",
-        dateLoading: "Loading date...",
-        timezone: "UTC +06:00 · DHAKA, BANGLADESH",
-        welcome: "✨ Click Here",
-        welcomeMessage: "Welcome to my website! ❤️",
-        contactTitle: "📩 Contact Me",
-        contactIntro: "Fill out the form below to send me a message.",
-        name: "Your Name",
-        email: "Your Email",
-        message: "Your Message",
-        send: "📩 Send Message",
-        socialTitle: "Connect With Me 🌐",
-        footer: "Made with ❤️ by MD Rifat Sheikh",
-        rights: "All Rights Reserved",
-        loading: "Loading...",
-        top: "Back to top",
-        languageButton: "🌐 English | বাংলা"
+    let width = 0, height = 0, dpr = 1;
+    let particles = [];
+    let frame = null;
+    let lastTime = 0;
+
+    function makeParticles() {
+        const count = Math.min(
+            150,
+            Math.max(45, Math.floor(width * height / 7500))
+        );
+
+        particles = Array.from({length: count}, () => ({
+            x: Math.random() * width,
+            y: Math.random() * height,
+            radius: Math.random() * 1.5 + .35,
+            speed: Math.random() * .24 + .06,
+            drift: (Math.random() - .5) * .22,
+            alpha: Math.random() * .65 + .2,
+            phase: Math.random() * Math.PI * 2
+        }));
     }
-};
 
-function applyLanguage() {
-    const t = translations[currentLanguage];
+    function resize() {
+        dpr = Math.min(window.devicePixelRatio || 1, 2);
+        width = window.innerWidth;
+        height = window.innerHeight;
 
-    document.documentElement.lang = currentLanguage;
-    document.getElementById("subtitle").textContent = t.subtitle;
-    document.getElementById("clock-title").textContent = t.clockTitle;
-    document.getElementById("timezone-label").textContent = t.timezone;
-    document.getElementById("welcome-button").textContent = t.welcome;
-    document.getElementById("contact-title").textContent = t.contactTitle;
-    document.getElementById("contact-intro").textContent = t.contactIntro;
-    document.getElementById("name-label").textContent = t.name;
-    document.getElementById("email-label").textContent = t.email;
-    document.getElementById("message-label").textContent = t.message;
-    document.getElementById("send-button").textContent = t.send;
-    document.getElementById("social-title").textContent = t.socialTitle;
-    document.getElementById("footer-text").textContent = t.footer;
-    document.getElementById("rights-text").textContent = t.rights;
-    document.getElementById("loading-text").textContent = t.loading;
-    document.getElementById("language-toggle").textContent = t.languageButton;
-    document.getElementById("back-to-top").title = t.top;
-    document.getElementById("back-to-top").setAttribute("aria-label", t.top);
-    document.getElementById("form-language").value = currentLanguage;
+        canvas.width = Math.round(width * dpr);
+        canvas.height = Math.round(height * dpr);
+        canvas.style.width = width + "px";
+        canvas.style.height = height + "px";
 
-    updateClock();
-}
-
-function toggleLanguage() {
-    currentLanguage = currentLanguage === "bn" ? "en" : "bn";
-    applyLanguage();
-}
-
-function showWelcome() {
-    alert(translations[currentLanguage].welcomeMessage);
-}
-
-function updateClock() {
-    const now = new Date();
-    const dateLocale = currentLanguage === "bn" ? "bn-BD" : "en-GB";
-
-    document.getElementById("live-clock").textContent =
-        new Intl.DateTimeFormat("en-GB", {
-            timeZone: "Asia/Dhaka",
-            hour: "2-digit",
-            minute: "2-digit",
-            second: "2-digit",
-            hour12: false
-        }).format(now);
-
-    document.getElementById("live-date").textContent =
-        new Intl.DateTimeFormat(dateLocale, {
-            timeZone: "Asia/Dhaka",
-            weekday: "long",
-            year: "numeric",
-            month: "long",
-            day: "numeric"
-        }).format(now);
-
-    document.getElementById("year").textContent =
-        new Intl.DateTimeFormat("en", {
-            timeZone: "Asia/Dhaka",
-            year: "numeric"
-        }).format(now);
-}
-
-function hideLoader() {
-    const loader = document.getElementById("page-loader");
-    if (loader) {
-        loader.classList.add("loaded");
-        loader.setAttribute("aria-hidden", "true");
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        makeParticles();
+        draw(0, true);
     }
-}
 
-window.addEventListener("load", hideLoader);
+    function draw(time, still = false) {
+        ctx.clearRect(0, 0, width, height);
 
-if (document.readyState === "complete") {
-    hideLoader();
-}
+        for (const p of particles) {
+            if (!reduceMotion && !still) {
+                p.y -= p.speed;
+                p.x += p.drift;
+                p.phase += .018;
 
-const topButton = document.getElementById("back-to-top");
+                if (p.y < -4) {
+                    p.y = height + 4;
+                    p.x = Math.random() * width;
+                }
+                if (p.x < -4) p.x = width + 4;
+                if (p.x > width + 4) p.x = -4;
+            }
 
-function toggleTopButton() {
-    topButton.classList.toggle("visible", window.scrollY > 250);
-}
+            const twinkle = reduceMotion
+                ? 1
+                : .65 + Math.sin(p.phase) * .35;
 
-window.addEventListener("scroll", toggleTopButton, { passive: true });
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(192,220,255,${p.alpha * twinkle})`;
+            ctx.fill();
 
-topButton.addEventListener("click", function () {
-    window.scrollTo({
-        top: 0,
-        behavior: window.matchMedia(
-            "(prefers-reduced-motion: reduce)"
-        ).matches ? "auto" : "smooth"
+            // Tiny soft space glow on selected stars
+            if (p.radius > 1.15) {
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.radius * 3, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(100,170,255,${p.alpha * .09})`;
+                ctx.fill();
+            }
+        }
+
+        if (!reduceMotion && !document.hidden) {
+            frame = requestAnimationFrame(draw);
+        }
+    }
+
+    function startAnimation() {
+        if (!reduceMotion && !document.hidden && frame === null) {
+            frame = requestAnimationFrame(draw);
+        }
+    }
+
+    function stopAnimation() {
+        if (frame !== null) {
+            cancelAnimationFrame(frame);
+            frame = null;
+        }
+    }
+
+    window.addEventListener("resize", () => {
+        resize();
+    }, {passive:true});
+
+    window.addEventListener("pointermove", event => {
+        if (event.pointerType === "touch") return;
+        glow.style.left = event.clientX + "px";
+        glow.style.top = event.clientY + "px";
+        glow.style.opacity = "1";
+    }, {passive:true});
+
+    document.addEventListener("pointerout", event => {
+        if (!event.relatedTarget) glow.style.opacity = "0";
     });
-});
 
-applyLanguage();
-updateClock();
-setInterval(updateClock, 1000);
-</script>
+    document.addEventListener("visibilitychange", () => {
+        if (document.hidden) {
+            stopAnimation();
+        } else {
+            startAnimation();
+        }
+    });
 
-</body>
-</html>
-"""
-    return page.replace("<!-- STATUS -->", status_html)
+    resize();
+    if (reduceMotion) {
+        stopAnimation();
+    } else {
+        startAnimation();
+    }
 
+    // Subtle 3D tilt for cards on mouse devices
+    if (window.matchMedia("(hover: hover) and (pointer: fine)").matches
+        && !reduceMotion) {
+        document.querySelectorAll(".tilt-card, .social-link").forEach(card => {
+            card.addEventListener("pointermove", event => {
+                const rect = card.getBoundingClientRect();
+                const x = (event.clientX - rect.left) / rect.width;
+                const y = (event.clientY - rect.top) / rect.height;
+                const rotateY = (x - .5) * 7;
+                const rotateX = (.5 - y) * 7;
 
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
-                        
+                card.style.transform =
+                    `perspective(900px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) translateY(-3px)`;
+            });
+
+        
