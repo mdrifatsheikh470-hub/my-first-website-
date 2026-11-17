@@ -11,7 +11,7 @@ def home():
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
-        <title>MD Rifat Sheikh</title>
+        <title>Rifat's Website</title>
     </head>
     <body style="background:#101827;color:white;text-align:center;padding:50px 10px;font-family:sans-serif">
         <h1 style="color:#38bdf8">MD Rifat Sheikh</h1>
