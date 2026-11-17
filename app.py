@@ -174,8 +174,14 @@ def home():
              class="animated-logo">
 
         <h1>MD Rifat Sheikh</h1>
-        <p>এটি আমার ব্যক্তিগত ওয়েবসাইট।</p>
-        <p>আমার ওয়েবসাইটে তোমাকে স্বাগতম!</p>
+        ঞ
+<div class="clock-card">
+    <div class="clock-title">🕒 BANGLADESH TIME</div>
+    <div id="live-clock">00:00:00</div>
+    <div id="live-date">তারিখ লোড হচ্ছে...</div>
+</div>
+
+    
 
         <button class="welcome-button"
                 onclick="alert('ওয়েবসাইট কাজ করছে!')">
