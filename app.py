@@ -1,609 +1,685 @@
 
-from flask import Flask, request
-from email.message import EmailMessage
-import smtplib
 import os
-import re
+import smtplib
+from email.message import EmailMessage
+from flask import Flask, request, render_template_string
 
 app = Flask(__name__)
+
+EMAIL_TO = "mdrifatsheikh470@gmail.com"
 
 
 @app.route("/", methods=["GET", "POST"])
 def home():
     status_html = ""
-    language = "bn"
 
     if request.method == "POST":
-        language = request.form.get("language", "bn")
-        if language not in ("bn", "en"):
-            language = "bn"
-
         name = request.form.get("name", "").strip()
         email = request.form.get("email", "").strip()
         message = request.form.get("message", "").strip()
 
         if not name or not email or not message:
-            msg = "সব ঘর পূরণ করুন।" if language == "bn" else "Please fill in all fields."
-            status_html = f'<p class="error" role="alert">{msg}</p>'
-
-        elif (
-            len(name) > 100
-            or len(email) > 254
-            or len(message) > 5000
-            or not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email)
-        ):
-            msg = "তথ্য সঠিকভাবে লিখুন।" if language == "bn" else "Please enter valid information."
-            status_html = f'<p class="error" role="alert">{msg}</p>'
-
+            status_html = """
+            <div class="notice error">
+                অনুগ্রহ করে সব ঘর পূরণ করুন।
+            </div>
+            """
         else:
-            username = os.environ.get("MAIL_USERNAME", "")
-            password = os.environ.get("MAIL_PASSWORD", "")
-            recipient = "mdrifatsheikh470@gmail.com"
+            mail_username = os.environ.get("MAIL_USERNAME")
+            mail_password = os.environ.get("MAIL_PASSWORD")
 
-            if not username or not password:
-                msg = (
-                    "ইমেইল সেটআপ এখনো সম্পূর্ণ হয়নি।"
-                    if language == "bn"
-                    else "Email setup is not complete yet."
-                )
-                status_html = f'<p class="error" role="alert">{msg}</p>'
+            if not mail_username or not mail_password:
+                status_html = """
+                <div class="notice error">
+                    ইমেইল সার্ভার এখন সেটআপ করা নেই।
+                    অনুগ্রহ করে পরে আবার চেষ্টা করুন।
+                </div>
+                """
             else:
-                mail = EmailMessage()
-                mail["Subject"] = "New Website Contact Message"
-                mail["From"] = username
-                mail["To"] = recipient
-                mail["Reply-To"] = email
-                mail.set_content(
-                    "A visitor sent a message from your website.\n\n"
-                    f"Name: {name}\n"
-                    f"Email: {email}\n\n"
-                    f"Message:\n{message}"
-                )
-
                 try:
+                    mail = EmailMessage()
+                    mail["Subject"] = f"Website Message from {name}"
+                    mail["From"] = mail_username
+                    mail["To"] = EMAIL_TO
+                    mail["Reply-To"] = email
+                    mail.set_content(
+                        f"নতুন ওয়েবসাইট মেসেজ\n\n"
+                        f"নাম: {name}\n"
+                        f"ইমেইল: {email}\n\n"
+                        f"মেসেজ:\n{message}"
+                    )
+
                     with smtplib.SMTP(
                         "smtp.gmail.com", 587, timeout=20
                     ) as server:
                         server.starttls()
-                        server.login(username, password)
+                        server.login(mail_username, mail_password)
                         server.send_message(mail)
 
-                    msg = (
-                        "আপনার মেসেজ পাঠানো হয়েছে! ধন্যবাদ।"
-                        if language == "bn"
-                        else "Your message has been sent! Thank you."
-                    )
-                    status_html = f'<p class="success" role="status">{msg}</p>'
-
+                    status_html = """
+                    <div class="notice success">
+                        আপনার মেসেজ পাঠানো হয়েছে। ধন্যবাদ! 💙
+                    </div>
+                    """
                 except Exception:
-                    app.logger.exception("Contact email delivery failed")
-                    msg = (
-                        "মেসেজ পাঠানো যায়নি। পরে আবার চেষ্টা করুন।"
-                        if language == "bn"
-                        else "Message could not be sent. Please try again later."
-                    )
-                    status_html = f'<p class="error" role="alert">{msg}</p>'
+                    app.logger.exception("Contact form email failed")
+                    status_html = """
+                    <div class="notice error">
+                        মেসেজ পাঠানো যায়নি। অনুগ্রহ করে পরে চেষ্টা করুন।
+                    </div>
+                    """
 
-    page = r"""
-<!DOCTYPE html>
+    page = r"""<!DOCTYPE html>
 <html lang="bn">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="theme-color" content="#050816">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#080d20">
+<meta name="description" content="MD Rifat Sheikh-এর অফিসিয়াল ওয়েবসাইট।">
 <title>MD Rifat Sheikh | Official Website</title>
 
 <style>
-* { box-sizing: border-box; }
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+:root {
+    --cyan: #55eaff;
+    --purple: #a78bfa;
+    --text: #f4f7ff;
+    --muted: #c2cce5;
+    --panel: rgba(255,255,255,0.075);
+}
 
 html {
     scroll-behavior: smooth;
-    scroll-padding-top: 20px;
 }
 
 body {
-    margin: 0;
     min-height: 100vh;
-    padding: 30px 14px;
-    color: white;
+    overflow-x: hidden;
+    color: var(--text);
+    background:
+        radial-gradient(ellipse at top left, #192b59 0%, transparent 45%),
+        radial-gradient(ellipse at bottom right, #30174c 0%, transparent 45%),
+        #080d20;
+    font-family: Arial, "Noto Sans Bengali", sans-serif;
     text-align: center;
-    font-family: Arial, sans-serif;
-    background: linear-gradient(-45deg,#050816,#101827,#171044,#062b49);
-    background-size: 400% 400%;
-    animation: backgroundMove 14s ease infinite;
 }
 
-@keyframes backgroundMove {
-    0%,100% { background-position: 0% 50%; }
-    50% { background-position: 100% 50%; }
-}
-
-#page-loader {
+#space-canvas {
     position: fixed;
     inset: 0;
-    z-index: 9999;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 18px;
-    background: #050816;
-    transition: opacity .5s ease, visibility .5s ease;
-}
-
-#page-loader.loaded {
-    opacity: 0;
-    visibility: hidden;
-    pointer-events: none;
-}
-
-.loader-ring {
-    width: 58px;
-    height: 58px;
-    border: 4px solid rgba(56,189,248,.18);
-    border-top-color: #38bdf8;
-    border-right-color: #818cf8;
-    border-radius: 50%;
-    animation: spinLoader .8s linear infinite;
-}
-
-@keyframes spinLoader {
-    to { transform: rotate(360deg); }
-}
-
-.loader-title {
-    color: #7dd3fc;
-    font-weight: bold;
-    letter-spacing: 2px;
-}
-
-.page {
     width: 100%;
-    max-width: 650px;
-    margin: auto;
-    animation: pageAppear .7s ease both;
+    height: 100%;
+    pointer-events: none;
+    z-index: 0;
 }
 
-@keyframes pageAppear {
-    from { opacity: 0; transform: translateY(12px); }
-    to { opacity: 1; transform: translateY(0); }
+.mouse-glow {
+    position: fixed;
+    width: 240px;
+    height: 240px;
+    border-radius: 50%;
+    background: rgba(85,234,255,0.08);
+    filter: blur(45px);
+    pointer-events: none;
+    z-index: 0;
+    transform: translate(-50%, -50%);
 }
 
-.animated-logo {
-    display: block;
-    width: 220px;
-    max-width: 80%;
-    height: auto;
-    margin: 12px auto 20px;
-    animation: floatLogo 3s ease-in-out infinite;
-    filter: drop-shadow(0 0 12px rgba(56,189,248,.25));
-    transition: filter .3s ease;
+.content {
+    position: relative;
+    z-index: 1;
+    width: min(920px, 92%);
+    margin: 0 auto;
+    padding: 35px 0 28px;
 }
 
-.animated-logo:hover {
-    filter: drop-shadow(0 0 24px #38bdf8);
+.topbar {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 20px;
 }
 
-@keyframes floatLogo {
-    0%,100% { transform: translateY(0); }
-    50% { transform: translateY(-10px); }
+.language-btn {
+    padding: 10px 16px;
+    color: white;
+    background: rgba(255,255,255,0.1);
+    border: 1px solid rgba(255,255,255,0.2);
+    border-radius: 25px;
+    cursor: pointer;
+    transition: 0.25s;
+}
+
+.language-btn:hover {
+    background: rgba(85,234,255,0.2);
+    transform: translateY(-2px);
+}
+
+.hero {
+    padding: 30px 20px;
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 28px;
+    background: rgba(255,255,255,0.045);
+    backdrop-filter: blur(12px);
+    box-shadow: 0 20px 70px rgba(0,0,0,0.25);
+    animation: fadeUp 0.9s ease both;
+}
+
+.logo {
+    width: 145px;
+    height: 145px;
+    max-width: 45vw;
+    max-height: 45vw;
+    object-fit: cover;
+    border-radius: 50%;
+    border: 3px solid var(--cyan);
+    box-shadow: 0 0 25px rgba(85,234,255,0.35);
+    margin-bottom: 20px;
+    animation: logoGlow 3s ease-in-out infinite alternate;
 }
 
 h1 {
-    color: #7dd3fc;
-    font-size: clamp(27px,7vw,40px);
-    text-shadow: 0 0 18px #0284c7;
+    font-size: clamp(28px, 6vw, 46px);
+    font-weight: 800;
+    overflow-wrap: anywhere;
+    background: linear-gradient(90deg, #ffffff, var(--cyan), var(--purple));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+}
+
+.typing-line {
+    min-height: 38px;
+    margin: 10px auto;
+    color: var(--cyan);
+    font-size: clamp(17px, 4.5vw, 23px);
+    font-weight: 700;
+    text-shadow: 0 0 14px rgba(56,189,248,0.65);
+    overflow-wrap: anywhere;
+}
+
+.typing-cursor {
+    display: inline-block;
+    margin-left: 3px;
+    color: white;
+    animation: typingBlink 0.7s steps(1) infinite;
 }
 
 .subtitle {
-    color: #cbd5e1;
-    line-height: 1.7;
-}
-
-.clock-card, .contact-card {
-    max-width: 420px;
-    margin: 28px auto;
-    padding: 24px 18px;
-    border: 1px solid rgba(56,189,248,.55);
-    border-radius: 22px;
-    background: rgba(10,20,45,.82);
-    box-shadow: 0 0 25px rgba(56,189,248,.15);
-    transition: transform .3s ease, box-shadow .3s ease;
-}
-
-.clock-card:hover, .contact-card:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 10px 35px rgba(56,189,248,.22);
-}
-
-.clock-title {
-    color: #7dd3fc;
-    font-size: 13px;
-    letter-spacing: 3px;
-    margin-bottom: 12px;
-}
-
-#live-clock {
-    font-size: clamp(34px,9vw,48px);
-    font-weight: bold;
-    font-variant-numeric: tabular-nums;
-    text-shadow: 0 0 18px #38bdf8;
-}
-
-#live-date {
-    color: #cbd5e1;
     margin-top: 12px;
-    line-height: 1.7;
+    color: var(--muted);
+    font-size: 16px;
+    line-height: 1.8;
 }
 
-.time-zone {
-    color: #7dd3fc;
-    font-size: 11px;
-    margin-top: 10px;
+.clock-box {
+    margin: 22px auto 0;
+    padding: 15px;
+    max-width: 360px;
+    border-radius: 18px;
+    background: rgba(85,234,255,0.07);
+    border: 1px solid rgba(85,234,255,0.17);
 }
 
-.welcome-button, .send-button {
-    display: inline-block;
-    padding: 13px 22px;
-    border: 0;
-    border-radius: 11px;
-    background: linear-gradient(135deg,#38bdf8,#818cf8);
-    color: #07111f;
+.clock-label {
+    color: var(--muted);
+    font-size: 13px;
+    margin-bottom: 6px;
+}
+
+#clock {
+    color: var(--cyan);
+    font-size: clamp(23px, 5vw, 32px);
     font-weight: bold;
-    cursor: pointer;
-    transition: transform .25s ease, box-shadow .25s ease;
+    letter-spacing: 1px;
 }
 
-.welcome-button:hover, .send-button:hover {
-    transform: translateY(-3px) scale(1.02);
-    box-shadow: 0 8px 24px rgba(56,189,248,.35);
-}
-
-.welcome-button:active, .send-button:active {
-    transform: scale(.97);
-}
-
-#language-toggle {
-    margin: 8px auto 16px;
-    border: 1px solid rgba(125,211,252,.5);
-    box-shadow: 0 0 15px rgba(56,189,248,.15);
-}
-
-.contact-card h2, .social-section h2 {
-    color: #e0f2fe;
-    margin-top: 0;
-}
-
-.contact-card p {
-    color: #cbd5e1;
-    line-height: 1.6;
-}
-
-.contact-form { text-align: left; }
-
-.contact-form label {
-    display: block;
-    margin: 15px 0 7px;
-    color: #e0f2fe;
+#date {
+    margin-top: 6px;
+    color: var(--muted);
     font-size: 14px;
 }
 
-.contact-form input, .contact-form textarea {
-    display: block;
-    width: 100%;
-    padding: 13px;
-    border: 1px solid #334155;
-    border-radius: 10px;
-    background: #0b1225;
-    color: white;
-    font: inherit;
-    transition: border-color .25s ease, box-shadow .25s ease;
+.section {
+    margin-top: 28px;
+    padding: 25px 20px;
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 24px;
+    background: var(--panel);
+    backdrop-filter: blur(10px);
+    animation: fadeUp 1s ease both;
 }
 
-.contact-form input:focus, .contact-form textarea:focus {
-    outline: none;
-    border-color: #38bdf8;
-    box-shadow: 0 0 0 3px rgba(56,189,248,.15);
+.section h2 {
+    font-size: 24px;
+    margin-bottom: 18px;
+    color: var(--cyan);
 }
 
-.contact-form textarea {
-    min-height: 130px;
-    resize: vertical;
+.social-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 13px;
 }
 
-.send-button {
-    width: 100%;
-    margin-top: 20px;
-    font-size: 15px;
-}
-
-.success {
-    color: #86efac !important;
-    background: rgba(22,163,74,.12);
-    padding: 12px;
-    border-radius: 10px;
-}
-
-.error {
-    color: #fca5a5 !important;
-    background: rgba(220,38,38,.12);
-    padding: 12px;
-    border-radius: 10px;
-}
-
-.social-section { margin: 38px auto 28px; }
-
-.social-icons {
-    display: flex;
-    justify-content: center;
-    flex-wrap: wrap;
-    gap: 18px 14px;
-    margin: 20px auto;
-}
-
-.social-item { width: 72px; }
-
-.social-icon {
-    width: 58px;
-    height: 58px;
+.social-card {
+    min-width: 0;
     display: flex;
     align-items: center;
     justify-content: center;
-    margin: auto;
-    border: 1px solid rgba(255,255,255,.12);
-    border-radius: 17px;
-    color: white;
-    font-size: 28px;
-    font-weight: bold;
+    gap: 9px;
+    min-height: 65px;
+    padding: 14px 8px;
     text-decoration: none;
-    transition: transform .25s ease, box-shadow .25s ease;
+    color: white;
+    font-weight: bold;
+    border-radius: 16px;
+    background: rgba(255,255,255,0.07);
+    border: 1px solid rgba(255,255,255,0.12);
+    transition: transform 0.25s, background 0.25s, border-color 0.25s;
+    overflow-wrap: anywhere;
 }
 
-.social-icon:hover {
-    transform: translateY(-7px) scale(1.08);
-    box-shadow: 0 8px 22px rgba(56,189,248,.25);
+.social-card:hover {
+    transform: translateY(-5px);
+    background: rgba(85,234,255,0.13);
+    border-color: var(--cyan);
 }
 
-.facebook { background: #1877F2; }
-.instagram {
-    background: linear-gradient(45deg,#feda75,#fa7e1e,#d62976,#962fbf,#4f5bd5);
-}
-.youtube { background: #ff0033; }
-.tiktok { background: #111; }
-.whatsapp { background: #128C7E; }
-
-.social-label {
-    color: #dbeafe;
-    font-size: 12px;
-    margin-top: 8px;
+.social-icon {
+    font-size: 22px;
 }
 
-.footer {
-    margin-top: 30px;
-    padding: 20px 5px;
-    border-top: 1px solid #334155;
-    color: #94a3b8;
-    font-size: 12px;
+.facebook { color: #82aaff; }
+.instagram { color: #ff9acb; }
+.youtube { color: #ff7777; }
+.tiktok { color: #7df7ed; }
+.whatsapp { color: #76f0a1; }
+
+.contact-form {
+    display: grid;
+    gap: 13px;
+}
+
+.contact-form input,
+.contact-form textarea {
+    width: 100%;
+    padding: 14px 15px;
+    color: white;
+    background: rgba(0,0,0,0.2);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 12px;
+    outline: none;
+    font: inherit;
+}
+
+.contact-form input:focus,
+.contact-form textarea:focus {
+    border-color: var(--cyan);
+    box-shadow: 0 0 0 3px rgba(85,234,255,0.08);
+}
+
+.contact-form input::placeholder,
+.contact-form textarea::placeholder {
+    color: #aebbd5;
+}
+
+.contact-form textarea {
+    min-height: 125px;
+    resize: vertical;
+}
+
+.submit-btn {
+    padding: 14px 20px;
+    color: #071323;
+    background: linear-gradient(90deg, var(--cyan), var(--purple));
+    border: none;
+    border-radius: 12px;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: transform 0.2s, filter 0.2s;
+}
+
+.submit-btn:hover {
+    transform: translateY(-2px);
+    filter: brightness(1.1);
+}
+
+.notice {
+    margin: 0 auto 15px;
+    padding: 13px;
+    border-radius: 12px;
+    line-height: 1.6;
+    overflow-wrap: anywhere;
+}
+
+.success {
+    color: #b7ffcf;
+    background: rgba(40,200,100,0.12);
+    border: 1px solid rgba(40,200,100,0.3);
+}
+
+.error {
+    color: #ffc1c1;
+    background: rgba(255,70,70,0.1);
+    border: 1px solid rgba(255,70,70,0.3);
+}
+
+footer {
+    padding: 28px 10px 10px;
+    color: var(--muted);
+    font-size: 13px;
     line-height: 1.8;
 }
 
 #back-to-top {
     position: fixed;
     right: 18px;
-    bottom: 20px;
-    z-index: 100;
-    width: 48px;
-    height: 48px;
-    border: 1px solid rgba(125,211,252,.6);
-    border-radius: 16px;
-    background: rgba(8,25,50,.92);
-    color: #7dd3fc;
-    font-size: 25px;
+    bottom: 18px;
+    width: 46px;
+    height: 46px;
+    border: 1px solid rgba(255,255,255,0.2);
+    border-radius: 50%;
+    background: rgba(85,234,255,0.2);
+    color: white;
+    font-size: 22px;
     cursor: pointer;
-    opacity: 0;
-    visibility: hidden;
-    pointer-events: none;
-    transform: translateY(12px);
-    transition: opacity .3s ease, visibility .3s ease,
-                transform .3s ease;
+    z-index: 5;
+    display: none;
+    backdrop-filter: blur(8px);
 }
 
 #back-to-top.visible {
-    opacity: 1;
-    visibility: visible;
-    pointer-events: auto;
-    transform: translateY(0);
+    display: block;
 }
 
-#back-to-top:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 0 25px rgba(56,189,248,.4);
+#loader {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: #080d20;
+    transition: opacity 0.45s, visibility 0.45s;
 }
 
-@media (max-width: 480px) {
-    body { padding: 22px 12px; }
-    .clock-card, .contact-card {
-        padding: 20px 14px;
-        border-radius: 18px;
+#loader.hidden {
+    opacity: 0;
+    visibility: hidden;
+}
+
+.loader-ring {
+    width: 55px;
+    height: 55px;
+    border: 4px solid rgba(255,255,255,0.12);
+    border-top-color: var(--cyan);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+@keyframes typingBlink {
+    50% { opacity: 0; }
+}
+
+@keyframes logoGlow {
+    from { box-shadow: 0 0 15px rgba(85,234,255,0.25); }
+    to { box-shadow: 0 0 32px rgba(167,139,250,0.5); }
+}
+
+@keyframes fadeUp {
+    from { opacity: 0; transform: translateY(18px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@media (max-width: 600px) {
+    .content {
+        width: 94%;
+        padding-top: 18px;
     }
-    .social-icons { gap: 18px 10px; }
-    .social-item { width: 65px; }
-    .social-icon {
-        width: 52px;
-        height: 52px;
-        border-radius: 15px;
+
+    .hero {
+        padding: 25px 13px;
+        border-radius: 22px;
     }
-    #back-to-top {
-        right: 12px;
-        bottom: 14px;
-        width: 44px;
-        height: 44px;
+
+    .section {
+        padding: 22px 13px;
+    }
+
+    .social-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+    }
+
+    .social-card {
+        font-size: 14px;
+        min-height: 58px;
     }
 }
 
 @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after {
         scroll-behavior: auto !important;
-        animation-duration: .01ms !important;
+        animation-duration: 0.01ms !important;
         animation-iteration-count: 1 !important;
-        transition-duration: .01ms !important;
+        transition-duration: 0.01ms !important;
     }
 }
 </style>
 </head>
 
 <body>
-
-<div id="page-loader" role="status">
+<div id="loader" aria-label="Loading">
     <div class="loader-ring"></div>
-    <div class="loader-title">MD RIFAT SHEIKH</div>
-    <div id="loading-text" style="color:#94a3b8;font-size:13px">লোড হচ্ছে...</div>
 </div>
 
-<main class="page">
+<canvas id="space-canvas"></canvas>
+<div class="mouse-glow" id="mouse-glow"></div>
 
-<img src="/static/logo.png" alt="Rifat Logo" class="animated-logo">
-
-<h1>MD Rifat Sheikh</h1>
-<p class="subtitle" id="subtitle">আমার অফিসিয়াল ওয়েবসাইটে স্বাগতম ✨</p>
-
-<button id="language-toggle" class="welcome-button"
-        type="button" onclick="toggleLanguage()">
-    🌐 বাংলা | English
-</button>
-
-<div class="clock-card">
-    <div class="clock-title" id="clock-title">🕒 বাংলাদেশের সময়</div>
-    <div id="live-clock">00:00:00</div>
-    <div id="live-date">তারিখ লোড হচ্ছে...</div>
-    <div class="time-zone" id="timezone-label">UTC +06:00 · ঢাকা, বাংলাদেশ</div>
-</div>
-
-<button class="welcome-button" id="welcome-button" type="button"
-        onclick="showWelcome()">
-    ✨ এখানে চাপ দাও
-</button>
-
-<section class="contact-card">
-    <h2 id="contact-title">📩 যোগাযোগ করুন</h2>
-    <p id="contact-intro">আমাকে কোনো মেসেজ পাঠাতে চাইলে নিচের ফর্মটি পূরণ করুন।</p>
-
-    <!-- STATUS -->
-
-    <form class="contact-form" method="POST" action="/">
-        <input type="hidden" name="language" id="form-language" value="bn">
-
-        <label for="name" id="name-label">আপনার নাম</label>
-        <input id="name" name="name" type="text"
-               maxlength="100" required autocomplete="name">
-
-        <label for="email" id="email-label">আপনার ইমেইল</label>
-        <input id="email" name="email" type="email"
-               maxlength="254" required autocomplete="email">
-
-        <label for="message" id="message-label">আপনার মেসেজ</label>
-        <textarea id="message" name="message"
-                  maxlength="5000" required></textarea>
-
-        <button class="send-button" id="send-button" type="submit">
-            📩 মেসেজ পাঠান
+<main class="content">
+    <div class="topbar">
+        <button class="language-btn" id="language-btn"
+                type="button" onclick="toggleLanguage()">
+            English
         </button>
-    </form>
-</section>
-
-<section class="social-section">
-    <h2 id="social-title">আমার সঙ্গে যোগাযোগ করুন 🌐</h2>
-
-    <div class="social-icons">
-        <div class="social-item">
-            <a class="social-icon facebook"
-               href="https://www.facebook.com/share/1FwFV17jmB/"
-               target="_blank" rel="noopener noreferrer"
-               aria-label="Facebook">f</a>
-            <div class="social-label">Facebook</div>
-        </div>
-
-        <div class="social-item">
-            <a class="social-icon instagram"
-               href="https://www.instagram.com/happy2538832?vrfl=MWg0YzRsd3lzZ3Fibw=="
-               target="_blank" rel="noopener noreferrer"
-               aria-label="Instagram">◎</a>
-            <div class="social-label">Instagram</div>
-        </div>
-
-        <div class="social-item">
-            <a class="social-icon youtube" href="#"
-               aria-label="YouTube">▶</a>
-            <div class="social-label">YouTube</div>
-        </div>
-
-        <div class="social-item">
-            <a class="social-icon tiktok" href="#"
-               aria-label="TikTok">♪</a>
-            <div class="social-label">TikTok</div>
-        </div>
-
-        <div class="social-item">
-            <a class="social-icon whatsapp" href="#"
-               aria-label="WhatsApp">✆</a>
-            <div class="social-label">WhatsApp</div>
-        </div>
     </div>
-</section>
 
-<footer class="footer">
-    <span id="footer-text">তৈরি করেছেন ❤️ MD Rifat Sheikh</span><br>
-    © <span id="year"></span> <span id="rights-text">সর্বস্বত্ব সংরক্ষিত</span>
-</footer>
+    <section class="hero">
+        <img class="logo" src="/static/logo.png"
+             alt="MD Rifat Sheikh Logo"
+             onerror="this.style.display='none'">
 
+        <h1>MD Rifat Sheikh</h1>
+
+        <p class="typing-line" aria-live="polite">
+            <span id="typing-text">কনটেন্ট ক্রিয়েটর</span><span class="typing-cursor">|</span>
+        </p>
+
+        <p class="subtitle" id="subtitle">
+            আমার অফিসিয়াল ওয়েবসাইটে স্বাগতম ✨
+        </p>
+
+        <div class="clock-box">
+            <div class="clock-label" id="clock-label">
+                বাংলাদেশের বর্তমান সময়
+            </div>
+            <div id="clock">--:--:--</div>
+            <div id="date">তারিখ লোড হচ্ছে...</div>
+        </div>
+    </section>
+
+    <section class="section">
+        <h2 id="social-heading">🌐 আমার সোশ্যাল মিডিয়া</h2>
+
+        <div class="social-grid">
+            <a class="social-card" href="https://www.facebook.com/share/1FwFV17jmB/"
+               target="_blank" rel="noopener noreferrer">
+                <span class="social-icon facebook">f</span>
+                <span>Facebook</span>
+            </a>
+
+            <a class="social-card" href="https://www.instagram.com/happy2538832?vrfl=MWg0YzRsd3lzZ3Fibw=="
+               target="_blank" rel="noopener noreferrer">
+                <span class="social-icon instagram">◎</span>
+                <span>Instagram</span>
+            </a>
+
+            <a class="social-card" href="https://www.youtube.com/"
+               target="_blank" rel="noopener noreferrer">
+                <span class="social-icon youtube">▶</span>
+                <span>YouTube</span>
+            </a>
+
+            <a class="social-card" href="https://www.tiktok.com/"
+               target="_blank" rel="noopener noreferrer">
+                <span class="social-icon tiktok">♪</span>
+                <span>TikTok</span>
+            </a>
+
+            <a class="social-card" href="https://www.whatsapp.com/"
+               target="_blank" rel="noopener noreferrer">
+                <span class="social-icon whatsapp">☏</span>
+                <span>WhatsApp</span>
+            </a>
+        </div>
+    </section>
+
+    <section class="section">
+        <h2 id="contact-heading">📩 যোগাযোগ করুন</h2>
+
+        <!-- STATUS -->
+
+        <form class="contact-form" method="POST" action="/">
+            <input type="text" name="name" id="contact-name"
+                   placeholder="আপনার নাম" maxlength="100" required>
+
+            <input type="email" name="email" id="contact-email"
+                   placeholder="আপনার ইমেইল" maxlength="254" required>
+
+            <textarea name="message" id="contact-message"
+                      placeholder="আপনার মেসেজ লিখুন..."
+                      maxlength="5000" required></textarea>
+
+            <button class="submit-btn" id="submit-btn" type="submit">
+                মেসেজ পাঠান ✉️
+            </button>
+        </form>
+    </section>
+
+    <footer>
+        <p id="footer-text">© 2026 MD Rifat Sheikh. সর্বস্বত্ব সংরক্ষিত।</p>
+        <p>Made with ❤️ in Bangladesh 🇧🇩</p>
+    </footer>
 </main>
 
 <button id="back-to-top" type="button"
-        aria-label="পাতার উপরে যান" title="Back to Top">↑</button>
+        aria-label="Back to top" title="Back to top">↑</button>
 
 <script>
 let currentLanguage = "bn";
 
+/* Typing Animation */
+const typingWords = {
+    bn: [
+        "কনটেন্ট ক্রিয়েটর",
+        "আমার ওয়েবসাইটে স্বাগতম",
+        "স্বপ্ন দেখি, এগিয়ে যাই",
+        "MD Rifat Sheikh"
+    ],
+    en: [
+        "Content Creator",
+        "Welcome to My Website",
+        "Dream Big, Work Hard",
+        "MD Rifat Sheikh"
+    ]
+};
+
+let typingWordIndex = 0;
+let typingCharIndex = 0;
+let isDeleting = false;
+let typingTimer = null;
+
+function runTypingAnimation() {
+    const element = document.getElementById("typing-text");
+    if (!element) return;
+
+    const words = typingWords[currentLanguage];
+    const word = words[typingWordIndex];
+
+    element.textContent = word.substring(0, typingCharIndex);
+
+    let delay = isDeleting ? 45 : 90;
+
+    if (!isDeleting) {
+        typingCharIndex++;
+
+        if (typingCharIndex > word.length) {
+            typingCharIndex = word.length;
+            isDeleting = true;
+            delay = 1400;
+        }
+    } else {
+        typingCharIndex--;
+
+        if (typingCharIndex < 0) {
+            typingCharIndex = 0;
+            isDeleting = false;
+            typingWordIndex = (typingWordIndex + 1) % words.length;
+        }
+    }
+
+    typingTimer = setTimeout(runTypingAnimation, delay);
+}
+
+function restartTypingAnimation() {
+    clearTimeout(typingTimer);
+    typingWordIndex = 0;
+    typingCharIndex = 0;
+    isDeleting = false;
+
+    const element = document.getElementById("typing-text");
+    if (element) element.textContent = "";
+
+    runTypingAnimation();
+}
+
+/* Bengali and English translations */
 const translations = {
     bn: {
+        button: "English",
         subtitle: "আমার অফিসিয়াল ওয়েবসাইটে স্বাগতম ✨",
-        clockTitle: "🕒 বাংলাদেশের সময়",
+        clock: "বাংলাদেশের বর্তমান সময়",
         dateLoading: "তারিখ লোড হচ্ছে...",
-        timezone: "UTC +06:00 · ঢাকা, বাংলাদেশ",
-        welcome: "✨ এখানে চাপ দাও",
-        welcomeMessage: "আমার ওয়েবসাইটে স্বাগতম! ❤️",
-        contactTitle: "📩 যোগাযোগ করুন",
-        contactIntro: "আমাকে কোনো মেসেজ পাঠাতে চাইলে নিচের ফর্মটি পূরণ করুন।",
+        social: "🌐 আমার সোশ্যাল মিডিয়া",
+        contact: "📩 যোগাযোগ করুন",
         name: "আপনার নাম",
         email: "আপনার ইমেইল",
-        message: "আপনার মেসেজ",
-        send: "📩 মেসেজ পাঠান",
-        socialTitle: "আমার সঙ্গে যোগাযোগ করুন 🌐",
-        footer: "তৈরি করেছেন ❤️ MD Rifat Sheikh",
-        rights: "সর্বস্বত্ব সংরক্ষিত",
-        loading: "লোড হচ্ছে...",
-        top: "পাতার উপরে যান",
-        languageButton: "🌐 বাংলা | English"
+        message: "আপনার মেসেজ লিখুন...",
+        send: "মেসেজ পাঠান ✉️",
+        footer: "© 2026 MD Rifat Sheikh. সর্বস্বত্ব সংরক্ষিত।"
     },
     en: {
-        subtitle: "Welcome to My Official Website ✨",
-        clockTitle: "🕒 BANGLADESH TIME",
+        button: "বাংলা",
+        subtitle: "Welcome to my official website ✨",
+        clock: "Current Bangladesh Time",
         dateLoading: "Loading date...",
-        timezone: "UTC +06:00 · DHAKA, BANGLADESH",
-        welcome: "✨ Click Here",
-        welcomeMessage: "Welcome to my website! ❤️",
-        contactTitle: "📩 Contact Me",
-        contactIntro: "Fill out the form below to send me a message.",
-        name: "Your Name",
-        email: "Your Email",
-        message: "Your Message",
-        send: "📩 Send Message",
-        socialTitle: "Connect With Me 🌐",
-        footer: "Made with ❤️ by MD Rifat Sheikh",
-        rights: "All Rights Reserved",
-        loading: "Loading...",
-        top: "Back to top",
-        languageButton: "🌐 English | বাংলা"
+        social: "🌐 My Social Media",
+        contact: "📩 Contact Me",
+        name: "Your name",
+        email: "Your email",
+        message: "Write your message...",
+        send: "Send Message ✉️",
+        footer: "© 2026 MD Rifat Sheikh. All rights reserved."
     }
 };
 
@@ -611,25 +687,18 @@ function applyLanguage() {
     const t = translations[currentLanguage];
 
     document.documentElement.lang = currentLanguage;
+    document.getElementById("language-btn").textContent = t.button;
     document.getElementById("subtitle").textContent = t.subtitle;
-    document.getElementById("clock-title").textContent = t.clockTitle;
-    document.getElementById("timezone-label").textContent = t.timezone;
-    document.getElementById("welcome-button").textContent = t.welcome;
-    document.getElementById("contact-title").textContent = t.contactTitle;
-    document.getElementById("contact-intro").textContent = t.contactIntro;
-    document.getElementById("name-label").textContent = t.name;
-    document.getElementById("email-label").textContent = t.email;
-    document.getElementById("message-label").textContent = t.message;
-    document.getElementById("send-button").textContent = t.send;
-    document.getElementById("social-title").textContent = t.socialTitle;
+    document.getElementById("clock-label").textContent = t.clock;
+    document.getElementById("social-heading").textContent = t.social;
+    document.getElementById("contact-heading").textContent = t.contact;
+    document.getElementById("contact-name").placeholder = t.name;
+    document.getElementById("contact-email").placeholder = t.email;
+    document.getElementById("contact-message").placeholder = t.message;
+    document.getElementById("submit-btn").textContent = t.send;
     document.getElementById("footer-text").textContent = t.footer;
-    document.getElementById("rights-text").textContent = t.rights;
-    document.getElementById("loading-text").textContent = t.loading;
-    document.getElementById("language-toggle").textContent = t.languageButton;
-    document.getElementById("back-to-top").title = t.top;
-    document.getElementById("back-to-top").setAttribute("aria-label", t.top);
-    document.getElementById("form-language").value = currentLanguage;
 
+    restartTypingAnimation();
     updateClock();
 }
 
@@ -638,80 +707,93 @@ function toggleLanguage() {
     applyLanguage();
 }
 
-function showWelcome() {
-    alert(translations[currentLanguage].welcomeMessage);
-}
-
+/* Bangladesh live clock and date */
 function updateClock() {
     const now = new Date();
-    const dateLocale = currentLanguage === "bn" ? "bn-BD" : "en-GB";
 
-    document.getElementById("live-clock").textContent =
+    document.getElementById("clock").textContent =
         new Intl.DateTimeFormat("en-GB", {
             timeZone: "Asia/Dhaka",
             hour: "2-digit",
             minute: "2-digit",
             second: "2-digit",
-            hour12: false
+            hour12: true
         }).format(now);
 
-    document.getElementById("live-date").textContent =
-        new Intl.DateTimeFormat(dateLocale, {
+    const locale = currentLanguage === "bn" ? "bn-BD" : "en-GB";
+
+    document.getElementById("date").textContent =
+        new Intl.DateTimeFormat(locale, {
             timeZone: "Asia/Dhaka",
             weekday: "long",
             year: "numeric",
             month: "long",
             day: "numeric"
         }).format(now);
-
-    document.getElementById("year").textContent =
-        new Intl.DateTimeFormat("en", {
-            timeZone: "Asia/Dhaka",
-            year: "numeric"
-        }).format(now);
 }
 
-function hideLoader() {
-    const loader = document.getElementById("page-loader");
-    if (loader) {
-        loader.classList.add("loaded");
-        loader.setAttribute("aria-hidden", "true");
-    }
+/* Welcome message */
+function showWelcome() {
+    console.log("Welcome to MD Rifat Sheikh's website!");
 }
 
-window.addEventListener("load", hideLoader);
-
-if (document.readyState === "complete") {
-    hideLoader();
-}
-
-const topButton = document.getElementById("back-to-top");
-
-function toggleTopButton() {
-    topButton.classList.toggle("visible", window.scrollY > 250);
-}
-
-window.addEventListener("scroll", toggleTopButton, { passive: true });
-
-topButton.addEventListener("click", function () {
-    window.scrollTo({
-        top: 0,
-        behavior: window.matchMedia(
-            "(prefers-reduced-motion: reduce)"
-        ).matches ? "auto" : "smooth"
-    });
+/* Loading screen */
+window.addEventListener("load", function () {
+    setTimeout(function () {
+        document.getElementById("loader").classList.add("hidden");
+    }, 350);
 });
 
-applyLanguage();
-updateClock();
-setInterval(updateClock, 1000);
-</script>
+/* Back to top button */
+const backToTop = document.getElementById("back-to-top");
 
-</body>
-</html>
-"""
-    return page.replace("<!-- STATUS -->", status_html)
+window.addEventListener("scroll", function () {
+    if (window.scrollY > 300) {
+        backToTop.classList.add("visible");
+    } else {
+        backToTop.classList.remove("visible");
+    }
+});
 
+backToTop.addEventListener("click", function () {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+});
 
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+/* Mouse glow */
+const glow = document.getElementById("mouse-glow");
+
+if (window.matchMedia("(pointer: fine)").matches) {
+    window.addEventListener("mousemove", function (event) {
+        glow.style.left = event.clientX + "px";
+        glow.style.top = event.clientY + "px";
+    });
+} else {
+    glow.style.display = "none";
+}
+
+/* Animated star particles */
+const canvas = document.getElementById("space-canvas");
+const ctx = canvas.getContext("2d");
+let stars = [];
+let canvasWidth = 0;
+let canvasHeight = 0;
+
+function resizeCanvas() {
+    const ratio = Math.min(window.devicePixelRatio || 1, 2);
+
+    canvasWidth = window.innerWidth;
+    canvasHeight = window.innerHeight;
+
+    canvas.width = canvasWidth * ratio;
+    canvas.height = canvasHeight * ratio;
+    canvas.style.width = canvasWidth + "px";
+    canvas.style.height = canvasHeight + "px";
+
+    ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+
+    const count = Math.min(
+        100,
+        Math.max(35, Math.floor(canvasWidth / 12))
+    );
+
+    stars 
