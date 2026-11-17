@@ -4,9 +4,9 @@ from email.message import EmailMessage
 import smtplib
 import os
 import re
-import html
 
 app = Flask(__name__)
+
 
 @app.route("/", methods=["GET", "POST"])
 def home():
@@ -51,7 +51,9 @@ def home():
                 )
 
                 try:
-                    with smtplib.SMTP("smtp.gmail.com", 587, timeout=20) as server:
+                    with smtplib.SMTP(
+                        "smtp.gmail.com", 587, timeout=20
+                    ) as server:
                         server.starttls()
                         server.login(username, password)
                         server.send_message(mail)
@@ -80,7 +82,14 @@ def home():
 <title>MD Rifat Sheikh | Official Website</title>
 
 <style>
-* { box-sizing: border-box; }
+* {
+    box-sizing: border-box;
+}
+
+html {
+    scroll-behavior: smooth;
+    scroll-padding-top: 20px;
+}
 
 body {
     margin: 0;
@@ -89,14 +98,63 @@ body {
     color: white;
     text-align: center;
     font-family: Arial, sans-serif;
-    background: linear-gradient(-45deg,#050816,#101827,#171044,#062b49);
+    background: linear-gradient(
+        -45deg, #050816, #101827, #171044, #062b49
+    );
     background-size: 400% 400%;
     animation: backgroundMove 14s ease infinite;
 }
 
 @keyframes backgroundMove {
-    0%,100% { background-position: 0% 50%; }
+    0%, 100% { background-position: 0% 50%; }
     50% { background-position: 100% 50%; }
+}
+
+/* Loading screen */
+#page-loader {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 18px;
+    background: #050816;
+    transition: opacity .5s ease, visibility .5s ease;
+}
+
+#page-loader.loaded {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+}
+
+.loader-ring {
+    width: 58px;
+    height: 58px;
+    border: 4px solid rgba(56, 189, 248, .18);
+    border-top-color: #38bdf8;
+    border-right-color: #818cf8;
+    border-radius: 50%;
+    animation: spinLoader .8s linear infinite;
+    box-shadow: 0 0 22px rgba(56, 189, 248, .2);
+}
+
+.loader-title {
+    color: #7dd3fc;
+    font-weight: bold;
+    letter-spacing: 2px;
+    animation: loaderPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes spinLoader {
+    to { transform: rotate(360deg); }
+}
+
+@keyframes loaderPulse {
+    0%, 100% { opacity: .55; }
+    50% { opacity: 1; }
 }
 
 .page {
@@ -104,37 +162,67 @@ body {
     width: 100%;
     max-width: 650px;
     margin: auto;
+    animation: pageAppear .7s ease both;
+}
+
+@keyframes pageAppear {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
 }
 
 .animated-logo {
+    display: block;
     width: 220px;
     max-width: 80%;
     height: auto;
     margin: 12px auto 20px;
     animation: floatLogo 3s ease-in-out infinite;
+    filter: drop-shadow(0 0 12px rgba(56, 189, 248, .25));
+    transition: filter .3s ease;
+}
+
+.animated-logo:hover {
+    filter: drop-shadow(0 0 24px #38bdf8);
 }
 
 @keyframes floatLogo {
-    0%,100% { transform: translateY(0); }
+    0%, 100% { transform: translateY(0); }
     50% { transform: translateY(-10px); }
 }
 
 h1 {
     color: #7dd3fc;
-    font-size: clamp(27px,7vw,40px);
+    font-size: clamp(27px, 7vw, 40px);
     text-shadow: 0 0 18px #0284c7;
+    animation: titleGlow 3s ease-in-out infinite alternate;
 }
 
-.subtitle { color: #cbd5e1; }
+@keyframes titleGlow {
+    from { text-shadow: 0 0 10px #0284c7; }
+    to { text-shadow: 0 0 25px #38bdf8, 0 0 35px #6366f1; }
+}
+
+.subtitle {
+    color: #cbd5e1;
+    line-height: 1.7;
+}
 
 .clock-card, .contact-card {
     max-width: 420px;
     margin: 28px auto;
     padding: 24px 18px;
-    border: 1px solid rgba(56,189,248,.55);
+    border: 1px solid rgba(56, 189, 248, .55);
     border-radius: 22px;
-    background: rgba(10,20,45,.82);
-    box-shadow: 0 0 25px rgba(56,189,248,.15);
+    background: rgba(10, 20, 45, .82);
+    box-shadow: 0 0 25px rgba(56, 189, 248, .15);
+    transition: transform .3s ease, box-shadow .3s ease,
+                border-color .3s ease;
+}
+
+.clock-card:hover, .contact-card:hover {
+    transform: translateY(-4px);
+    border-color: #7dd3fc;
+    box-shadow: 0 10px 35px rgba(56, 189, 248, .22);
 }
 
 .clock-title {
@@ -145,7 +233,7 @@ h1 {
 }
 
 #live-clock {
-    font-size: clamp(34px,9vw,48px);
+    font-size: clamp(34px, 9vw, 48px);
     font-weight: bold;
     font-variant-numeric: tabular-nums;
     text-shadow: 0 0 18px #38bdf8;
@@ -168,10 +256,27 @@ h1 {
     padding: 13px 22px;
     border: 0;
     border-radius: 11px;
-    background: linear-gradient(135deg,#38bdf8,#818cf8);
+    background: linear-gradient(135deg, #38bdf8, #818cf8);
     color: #07111f;
     font-weight: bold;
     cursor: pointer;
+    transition: transform .25s ease, box-shadow .25s ease,
+                filter .25s ease;
+}
+
+.welcome-button:hover, .send-button:hover {
+    transform: translateY(-3px) scale(1.02);
+    box-shadow: 0 8px 24px rgba(56, 189, 248, .35);
+    filter: brightness(1.1);
+}
+
+.welcome-button:active, .send-button:active {
+    transform: scale(.97);
+}
+
+button:focus-visible, a:focus-visible {
+    outline: 3px solid #bae6fd;
+    outline-offset: 4px;
 }
 
 .contact-card h2, .social-section h2 {
@@ -184,7 +289,9 @@ h1 {
     line-height: 1.6;
 }
 
-.contact-form { text-align: left; }
+.contact-form {
+    text-align: left;
+}
 
 .contact-form label {
     display: block;
@@ -202,11 +309,13 @@ h1 {
     background: #0b1225;
     color: white;
     font: inherit;
+    transition: border-color .25s ease, box-shadow .25s ease;
 }
 
 .contact-form input:focus, .contact-form textarea:focus {
-    outline: 2px solid #38bdf8;
-    border-color: transparent;
+    outline: none;
+    border-color: #38bdf8;
+    box-shadow: 0 0 0 3px rgba(56, 189, 248, .15);
 }
 
 .contact-form textarea {
@@ -222,19 +331,21 @@ h1 {
 
 .success {
     color: #86efac !important;
-    background: rgba(22,163,74,.12);
+    background: rgba(22, 163, 74, .12);
     padding: 12px;
     border-radius: 10px;
 }
 
 .error {
     color: #fca5a5 !important;
-    background: rgba(220,38,38,.12);
+    background: rgba(220, 38, 38, .12);
     padding: 12px;
     border-radius: 10px;
 }
 
-.social-section { margin: 38px auto 28px; }
+.social-section {
+    margin: 38px auto 28px;
+}
 
 .social-icons {
     display: flex;
@@ -244,7 +355,9 @@ h1 {
     margin: 20px auto;
 }
 
-.social-item { width: 72px; }
+.social-item {
+    width: 72px;
+}
 
 .social-icon {
     width: 58px;
@@ -253,18 +366,28 @@ h1 {
     align-items: center;
     justify-content: center;
     margin: auto;
+    border: 1px solid rgba(255,255,255,.12);
     border-radius: 17px;
     color: white;
     font-size: 28px;
     font-weight: bold;
     text-decoration: none;
-    transition: transform .2s;
+    transition: transform .25s ease, box-shadow .25s ease,
+                border-radius .25s ease;
 }
 
-.social-icon:hover { transform: translateY(-5px); }
+.social-icon:hover {
+    transform: translateY(-7px) scale(1.08) rotate(-3deg);
+    box-shadow: 0 8px 22px rgba(56, 189, 248, .25);
+    border-radius: 20px;
+}
 
 .facebook { background: #1877F2; }
-.instagram { background: linear-gradient(45deg,#feda75,#fa7e1e,#d62976,#962fbf,#4f5bd5); }
+.instagram {
+    background: linear-gradient(
+        45deg, #feda75, #fa7e1e, #d62976, #962fbf, #4f5bd5
+    );
+}
 .youtube { background: #ff0033; }
 .tiktok { background: #111; }
 .whatsapp { background: #128C7E; }
@@ -283,10 +406,96 @@ h1 {
     font-size: 12px;
     line-height: 1.8;
 }
+
+/* Back to Top button */
+#back-to-top {
+    position: fixed;
+    right: 18px;
+    bottom: 20px;
+    z-index: 100;
+    width: 48px;
+    height: 48px;
+    border: 1px solid rgba(125, 211, 252, .6);
+    border-radius: 16px;
+    background: rgba(8, 25, 50, .92);
+    color: #7dd3fc;
+    font-size: 25px;
+    cursor: pointer;
+    box-shadow: 0 0 18px rgba(56, 189, 248, .18);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transform: translateY(12px);
+    transition: opacity .3s ease, visibility .3s ease,
+                transform .3s ease, background .3s ease;
+}
+
+#back-to-top.visible {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transform: translateY(0);
+}
+
+#back-to-top:hover {
+    background: #0c3555;
+    transform: translateY(-4px);
+    box-shadow: 0 0 25px rgba(56, 189, 248, .4);
+}
+
+@media (max-width: 480px) {
+    body {
+        padding: 22px 12px;
+    }
+
+    .clock-card, .contact-card {
+        padding: 20px 14px;
+        border-radius: 18px;
+    }
+
+    .social-icons {
+        gap: 18px 10px;
+    }
+
+    .social-item {
+        width: 65px;
+    }
+
+    .social-icon {
+        width: 52px;
+        height: 52px;
+        border-radius: 15px;
+    }
+
+    #back-to-top {
+        right: 12px;
+        bottom: 14px;
+        width: 44px;
+        height: 44px;
+    }
+}
+
+/* Respect reduced-motion preferences */
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        scroll-behavior: auto !important;
+        animation-duration: .01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: .01ms !important;
+    }
+}
 </style>
 </head>
 
 <body>
+
+<!-- Loading Screen -->
+<div id="page-loader" role="status" aria-label="ওয়েবসাইট লোড হচ্ছে">
+    <div class="loader-ring"></div>
+    <div class="loader-title">MD RIFAT SHEIKH</div>
+    <div style="color:#94a3b8;font-size:13px">লোড হচ্ছে...</div>
+</div>
+
 <main class="page">
 
 <img src="/static/logo.png" alt="Rifat Logo" class="animated-logo">
@@ -301,7 +510,7 @@ h1 {
     <div class="time-zone">UTC +06:00 · DHAKA, BANGLADESH</div>
 </div>
 
-<button class="welcome-button"
+<button class="welcome-button" type="button"
 onclick="alert('আমার ওয়েবসাইটে স্বাগতম! ❤️')">
 ✨ এখানে চাপ দাও
 </button>
@@ -338,14 +547,16 @@ onclick="alert('আমার ওয়েবসাইটে স্বাগতম! 
         <div class="social-item">
             <a class="social-icon facebook"
                href="https://www.facebook.com/share/1FwFV17jmB/"
-               target="_blank" rel="noopener noreferrer">f</a>
+               target="_blank" rel="noopener noreferrer"
+               aria-label="Facebook">f</a>
             <div class="social-label">Facebook</div>
         </div>
 
         <div class="social-item">
             <a class="social-icon instagram"
                href="https://www.instagram.com/happy2538832?vrfl=MWg0YzRsd3lzZ3Fibw=="
-               target="_blank" rel="noopener noreferrer">◎</a>
+               target="_blank" rel="noopener noreferrer"
+               aria-label="Instagram">◎</a>
             <div class="social-label">Instagram</div>
         </div>
 
@@ -376,6 +587,10 @@ onclick="alert('আমার ওয়েবসাইটে স্বাগতম! 
 
 </main>
 
+<!-- Back to Top -->
+<button id="back-to-top" type="button"
+        aria-label="পাতার উপরে যান" title="Back to Top">↑</button>
+
 <script>
 function updateClock() {
     const now = new Date();
@@ -404,9 +619,50 @@ function updateClock() {
             year: 'numeric'
         }).format(now);
 }
+
 updateClock();
 setInterval(updateClock, 1000);
+
+// Hide the loading screen after the page finishes loading
+function hideLoader() {
+    const loader = document.getElementById('page-loader');
+    if (loader) {
+        loader.classList.add('loaded');
+        loader.setAttribute('aria-hidden', 'true');
+    }
+}
+
+window.addEventListener('load', hideLoader);
+
+// Also hide it if the load event already fired
+if (document.readyState === 'complete') {
+    hideLoader();
+}
+
+// Back to Top visibility and action
+const topButton = document.getElementById('back-to-top');
+
+function toggleTopButton() {
+    if (window.scrollY > 250) {
+        topButton.classList.add('visible');
+    } else {
+        topButton.classList.remove('visible');
+    }
+}
+
+window.addEventListener('scroll', toggleTopButton, { passive: true });
+toggleTopButton();
+
+topButton.addEventListener('click', function () {
+    window.scrollTo({
+        top: 0,
+        behavior: window.matchMedia(
+            '(prefers-reduced-motion: reduce)'
+        ).matches ? 'auto' : 'smooth'
+    });
+});
 </script>
+
 </body>
 </html>
 """
