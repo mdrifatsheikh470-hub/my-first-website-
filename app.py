@@ -13,12 +13,27 @@ def home():
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <title>Rifat's Website</title>
     </head>
-    <body style="background:#101827;color:white;text-align:center;padding:50px 10px;font-family:sans-serif">
+
+    <body style="
+        background:#101827;
+        color:white;
+        text-align:center;
+        padding:40px 10px;
+        font-family:sans-serif;
+        margin:0;
+    ">
+
+        <img src="/static/logo.png"
+             alt="Rifat's Website Logo"
+             style="width:220px;max-width:85%;height:auto;margin-bottom:20px;">
+
         <h1 style="color:#38bdf8">MD Rifat Sheikh</h1>
+
         <p>এটি আমার ব্যক্তিগত ওয়েবসাইট।</p>
         <p>আমার ওয়েবসাইটে তোমাকে স্বাগতম!</p>
 
-        <button onclick="alert('ওয়েবসাইট কাজ করছে!')">
+        <button onclick="alert('ওয়েবসাইট কাজ করছে!')"
+            style="padding:12px 20px;border:0;border-radius:8px;cursor:pointer;">
             এখানে চাপ দাও
         </button>
 
@@ -39,6 +54,7 @@ def home():
                 Visit My Instagram
             </a>
         </p>
+
     </body>
     </html>
     """
