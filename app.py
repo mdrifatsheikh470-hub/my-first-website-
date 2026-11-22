@@ -741,6 +741,15 @@ def bad_request(error):
 
 
 @app.errorhandler(404)
+def not_found(error):
+    return page(
+        "Not Found",
+        '<h1>Page Not Found</h1>'
+        '<p class="center"><a href="/">Return Home</a></p>'
+    ), 404
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "10000"))
     app.run(host="0.0.0.0", port=port)
+    
