@@ -726,6 +726,7 @@ def login():
     )
 
 
+
 # ---------------- PRIVATE DASHBOARD ----------------
 
 @app.route("/dashboard")
@@ -748,18 +749,11 @@ def dashboard():
     <div class="grid">
         <div class="tile">
             <h2>👤 Account</h2>
-            <p>
-                Username:
-                <strong>{{ account['username'] }}</strong>
-            </p>
+            <p>Username: <strong>{{ account['username'] }}</strong></p>
         </div>
-
         <div class="tile">
             <h2>🔐 Security</h2>
-            <p>
-                Your password is stored as a secure hash,
-                not as plain text.
-            </p>
+            <p>Your password is stored as a secure hash, not as plain text.</p>
         </div>
     </div>
 
@@ -768,7 +762,61 @@ def dashboard():
     </p>
 
     <form method="POST" action="/logout" style="margin-top:20px">
-        <input type="hidden" name="csrf_token"
-               value="{{ csrf_token }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <button type="submit">Logout</button>
-    <
+    </form>
+    """
+
+    return page("Dashboard", content, account=user)
+
+
+# ---------------- LOGOUT ----------------
+
+@app.route("/logout", methods=["GET", "POST"])
+def logout():
+    if "user_id" not in session:
+        return redirect(url_for("login"))
+
+    if request.method == "GET":
+        content = """
+        <h1>Logout</h1>
+        <p class="center">Are you sure you want to log out?</p>
+
+        <form method="POST" action="/logout">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit">Confirm Logout</button>
+        </form>
+        """
+        return page("Logout", content)
+
+    verify_csrf()
+    session.clear()
+    return redirect(url_for("login"))
+
+
+# ---------------- ERROR HANDLERS ----------------
+
+@app.errorhandler(400)
+def bad_request(error):
+    return page(
+        "Request Error",
+        '<h1>Request Error</h1>'
+        '<p class="center">Your form expired or was invalid. '
+        '<a href="/login">Please log in and try again.</a></p>'
+    ), 400
+
+
+@app.errorhandler(404)
+def not_found(error):
+    return page(
+        "Not Found",
+        '<h1>Page Not Found</h1>'
+        '<p class="center"><a href="/">Return Home</a></p>'
+    ), 404
+
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", "10000"))
+    app.run(host="0.0.0.0", port=port)
+    
+
