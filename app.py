@@ -1,799 +1,713 @@
-
 import os
+import re
+import hmac
+import secrets
+import sqlite3
 import smtplib
+
+from functools import wraps
+from pathlib import Path
 from email.message import EmailMessage
-from flask import Flask, request, render_template_string
+
+from flask import (
+    Flask, request, redirect, url_for, session,
+    render_template_string, abort
+)
+from werkzeug.security import generate_password_hash, check_password_hash
+
 
 app = Flask(__name__)
+
+# Set SECRET_KEY in Render Environment Variables.
+app.secret_key = os.environ.get("SECRET_KEY") or secrets.token_hex(32)
+
+# On Render, set DB_PATH=/var/data/users.db
+DB_PATH = os.environ.get("DB_PATH", "users.db")
 
 EMAIL_TO = "mdrifatsheikh470@gmail.com"
 
 
-@app.route("/", methods=["GET", "POST"])
-def home():
-    status_html = ""
+# ---------------- DATABASE ----------------
 
-    if request.method == "POST":
-        name = request.form.get("name", "").strip()
-        email = request.form.get("email", "").strip()
-        message = request.form.get("message", "").strip()
+def get_db():
+    path = Path(DB_PATH)
+    path.parent.mkdir(parents=True, exist_ok=True)
 
-        if not name or not email or not message:
-            status_html = """
-            <div class="notice error">
-                অনুগ্রহ করে সব ঘর পূরণ করুন।
-            </div>
-            """
-        else:
-            mail_username = os.environ.get("MAIL_USERNAME")
-            mail_password = os.environ.get("MAIL_PASSWORD")
+    db = sqlite3.connect(str(path), timeout=15)
+    db.row_factory = sqlite3.Row
+    return db
 
-            if not mail_username or not mail_password:
-                status_html = """
-                <div class="notice error">
-                    ইমেইল সার্ভার এখন সেটআপ করা নেই।
-                    অনুগ্রহ করে পরে আবার চেষ্টা করুন।
-                </div>
-                """
-            else:
-                try:
-                    mail = EmailMessage()
-                    mail["Subject"] = f"Website Message from {name}"
-                    mail["From"] = mail_username
-                    mail["To"] = EMAIL_TO
-                    mail["Reply-To"] = email
-                    mail.set_content(
-                        f"নতুন ওয়েবসাইট মেসেজ\n\n"
-                        f"নাম: {name}\n"
-                        f"ইমেইল: {email}\n\n"
-                        f"মেসেজ:\n{message}"
-                    )
 
-                    with smtplib.SMTP(
-                        "smtp.gmail.com", 587, timeout=20
-                    ) as server:
-                        server.starttls()
-                        server.login(mail_username, mail_password)
-                        server.send_message(mail)
+def init_db():
+    with get_db() as db:
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT NOT NULL COLLATE NOCASE UNIQUE,
+                password_hash TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
 
-                    status_html = """
-                    <div class="notice success">
-                        আপনার মেসেজ পাঠানো হয়েছে। ধন্যবাদ! 💙
-                    </div>
-                    """
-                except Exception:
-                    app.logger.exception("Contact form email failed")
-                    status_html = """
-                    <div class="notice error">
-                        মেসেজ পাঠানো যায়নি। অনুগ্রহ করে পরে চেষ্টা করুন।
-                    </div>
-                    """
 
-    page = r"""<!DOCTYPE html>
-<html lang="bn">
+init_db()
+
+
+# ---------------- SECURITY ----------------
+
+def csrf_token():
+    if "csrf_token" not in session:
+        session["csrf_token"] = secrets.token_urlsafe(32)
+    return session["csrf_token"]
+
+
+def verify_csrf():
+    supplied = request.form.get("csrf_token", "")
+    expected = session.get("csrf_token", "")
+
+    if (
+        not supplied
+        or not expected
+        or not hmac.compare_digest(supplied, expected)
+    ):
+        abort(400, description="Invalid form token. Please reload the page.")
+
+    return True
+
+
+def login_required(view):
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        if "user_id" not in session:
+            return redirect(url_for("login", next="dashboard"))
+        return view(*args, **kwargs)
+    return wrapped
+
+
+def page(title, content, **context):
+    return render_template_string(
+        BASE_TEMPLATE,
+        title=title,
+        content=content,
+        csrf_token=csrf_token(),
+        username=session.get("username"),
+        **context
+    )
+
+
+# ---------------- SHARED DESIGN ----------------
+
+BASE_TEMPLATE = r"""
+<!DOCTYPE html>
+<html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#080d20">
-<meta name="description" content="MD Rifat Sheikh-এর অফিসিয়াল ওয়েবসাইট।">
-<title>MD Rifat Sheikh | Official Website</title>
+<title>{{ title }} | MD Rifat Sheikh</title>
 
 <style>
-* {
-    box-sizing: border-box;
-    margin: 0;
-    padding: 0;
-}
-
-:root {
-    --cyan: #55eaff;
-    --purple: #a78bfa;
-    --text: #f4f7ff;
-    --muted: #c2cce5;
-    --panel: rgba(255,255,255,0.075);
-}
-
-html {
-    scroll-behavior: smooth;
-}
+* { box-sizing: border-box; }
 
 body {
+    margin: 0;
     min-height: 100vh;
-    overflow-x: hidden;
-    color: var(--text);
+    padding: 20px;
+    color: #f4f7ff;
+    font-family: Arial, sans-serif;
     background:
-        radial-gradient(ellipse at top left, #192b59 0%, transparent 45%),
-        radial-gradient(ellipse at bottom right, #30174c 0%, transparent 45%),
+        radial-gradient(ellipse at top left, #192b59, transparent 50%),
+        radial-gradient(ellipse at bottom right, #30174c, transparent 50%),
         #080d20;
-    font-family: Arial, "Noto Sans Bengali", sans-serif;
-    text-align: center;
 }
 
-#space-canvas {
-    position: fixed;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    pointer-events: none;
-    z-index: 0;
-}
+a { color: #55eaff; }
 
-.mouse-glow {
-    position: fixed;
-    width: 240px;
-    height: 240px;
-    border-radius: 50%;
-    background: rgba(85,234,255,0.08);
-    filter: blur(45px);
-    pointer-events: none;
-    z-index: 0;
-    transform: translate(-50%, -50%);
-}
-
-.content {
-    position: relative;
-    z-index: 1;
-    width: min(920px, 92%);
-    margin: 0 auto;
-    padding: 35px 0 28px;
-}
-
-.topbar {
+.nav {
     display: flex;
-    justify-content: flex-end;
-    margin-bottom: 20px;
-}
-
-.language-btn {
-    padding: 10px 16px;
-    color: white;
-    background: rgba(255,255,255,0.1);
-    border: 1px solid rgba(255,255,255,0.2);
-    border-radius: 25px;
-    cursor: pointer;
-    transition: 0.25s;
-}
-
-.language-btn:hover {
-    background: rgba(85,234,255,0.2);
-    transform: translateY(-2px);
-}
-
-.hero {
-    padding: 30px 20px;
-    border: 1px solid rgba(255,255,255,0.12);
-    border-radius: 28px;
-    background: rgba(255,255,255,0.045);
-    backdrop-filter: blur(12px);
-    box-shadow: 0 20px 70px rgba(0,0,0,0.25);
-    animation: fadeUp 0.9s ease both;
-}
-
-.logo {
-    width: 145px;
-    height: 145px;
-    max-width: 45vw;
-    max-height: 45vw;
-    object-fit: cover;
-    border-radius: 50%;
-    border: 3px solid var(--cyan);
-    box-shadow: 0 0 25px rgba(85,234,255,0.35);
-    margin-bottom: 20px;
-    animation: logoGlow 3s ease-in-out infinite alternate;
-}
-
-h1 {
-    font-size: clamp(28px, 6vw, 46px);
-    font-weight: 800;
-    overflow-wrap: anywhere;
-    background: linear-gradient(90deg, #ffffff, var(--cyan), var(--purple));
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
-}
-
-.typing-line {
-    min-height: 38px;
-    margin: 10px auto;
-    color: var(--cyan);
-    font-size: clamp(17px, 4.5vw, 23px);
-    font-weight: 700;
-    text-shadow: 0 0 14px rgba(56,189,248,0.65);
-    overflow-wrap: anywhere;
-}
-
-.typing-cursor {
-    display: inline-block;
-    margin-left: 3px;
-    color: white;
-    animation: typingBlink 0.7s steps(1) infinite;
-}
-
-.subtitle {
-    margin-top: 12px;
-    color: var(--muted);
-    font-size: 16px;
-    line-height: 1.8;
-}
-
-.clock-box {
-    margin: 22px auto 0;
-    padding: 15px;
-    max-width: 360px;
-    border-radius: 18px;
-    background: rgba(85,234,255,0.07);
-    border: 1px solid rgba(85,234,255,0.17);
-}
-
-.clock-label {
-    color: var(--muted);
-    font-size: 13px;
-    margin-bottom: 6px;
-}
-
-#clock {
-    color: var(--cyan);
-    font-size: clamp(23px, 5vw, 32px);
-    font-weight: bold;
-    letter-spacing: 1px;
-}
-
-#date {
-    margin-top: 6px;
-    color: var(--muted);
-    font-size: 14px;
-}
-
-.section {
-    margin-top: 28px;
-    padding: 25px 20px;
-    border: 1px solid rgba(255,255,255,0.1);
-    border-radius: 24px;
-    background: var(--panel);
-    backdrop-filter: blur(10px);
-    animation: fadeUp 1s ease both;
-}
-
-.section h2 {
-    font-size: 24px;
-    margin-bottom: 18px;
-    color: var(--cyan);
-}
-
-.social-grid {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 13px;
-}
-
-.social-card {
-    min-width: 0;
-    display: flex;
-    align-items: center;
     justify-content: center;
-    gap: 9px;
-    min-height: 65px;
-    padding: 14px 8px;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin: 8px auto 25px;
+}
+
+.nav a {
     text-decoration: none;
     color: white;
-    font-weight: bold;
-    border-radius: 16px;
-    background: rgba(255,255,255,0.07);
-    border: 1px solid rgba(255,255,255,0.12);
-    transition: transform 0.25s, background 0.25s, border-color 0.25s;
+    padding: 10px 14px;
+    border-radius: 12px;
+    background: rgba(255,255,255,.08);
+}
+
+.nav a:hover { background: rgba(85,234,255,.18); }
+
+.wrap {
+    width: min(760px, 100%);
+    margin: 0 auto;
+}
+
+.panel {
+    padding: 28px;
+    border: 1px solid rgba(255,255,255,.14);
+    border-radius: 22px;
+    background: rgba(255,255,255,.07);
+    box-shadow: 0 20px 65px rgba(0,0,0,.25);
+    backdrop-filter: blur(12px);
     overflow-wrap: anywhere;
 }
 
-.social-card:hover {
-    transform: translateY(-5px);
-    background: rgba(85,234,255,0.13);
-    border-color: var(--cyan);
+h1, h2 {
+    text-align: center;
+    color: #55eaff;
 }
 
-.social-icon {
-    font-size: 22px;
-}
+h1 { font-size: clamp(26px, 5vw, 38px); }
 
-.facebook { color: #82aaff; }
-.instagram { color: #ff9acb; }
-.youtube { color: #ff7777; }
-.tiktok { color: #7df7ed; }
-.whatsapp { color: #76f0a1; }
+p { line-height: 1.7; }
 
-.contact-form {
-    display: grid;
-    gap: 13px;
-}
+form { display: grid; gap: 14px; }
 
-.contact-form input,
-.contact-form textarea {
+label { font-size: 14px; color: #d4def4; }
+
+input, textarea {
     width: 100%;
-    padding: 14px 15px;
-    color: white;
-    background: rgba(0,0,0,0.2);
-    border: 1px solid rgba(255,255,255,0.15);
+    padding: 14px;
+    border: 1px solid rgba(255,255,255,.18);
     border-radius: 12px;
-    outline: none;
+    background: rgba(0,0,0,.22);
+    color: white;
     font: inherit;
 }
 
-.contact-form input:focus,
-.contact-form textarea:focus {
-    border-color: var(--cyan);
-    box-shadow: 0 0 0 3px rgba(85,234,255,0.08);
+input:focus, textarea:focus {
+    outline: 2px solid #55eaff;
+    outline-offset: 1px;
 }
 
-.contact-form input::placeholder,
-.contact-form textarea::placeholder {
-    color: #aebbd5;
-}
-
-.contact-form textarea {
-    min-height: 125px;
-    resize: vertical;
-}
-
-.submit-btn {
-    padding: 14px 20px;
-    color: #071323;
-    background: linear-gradient(90deg, var(--cyan), var(--purple));
-    border: none;
+button, .button {
+    display: inline-block;
+    padding: 13px 18px;
+    border: 0;
     border-radius: 12px;
-    font-size: 16px;
+    color: #071323;
+    background: linear-gradient(90deg, #55eaff, #a78bfa);
     font-weight: bold;
+    font-size: 15px;
+    text-align: center;
+    text-decoration: none;
     cursor: pointer;
-    transition: transform 0.2s, filter 0.2s;
 }
 
-.submit-btn:hover {
-    transform: translateY(-2px);
-    filter: brightness(1.1);
-}
+button:hover, .button:hover { filter: brightness(1.1); }
 
 .notice {
-    margin: 0 auto 15px;
-    padding: 13px;
-    border-radius: 12px;
+    padding: 12px;
+    border-radius: 10px;
     line-height: 1.6;
-    overflow-wrap: anywhere;
-}
-
-.success {
-    color: #b7ffcf;
-    background: rgba(40,200,100,0.12);
-    border: 1px solid rgba(40,200,100,0.3);
+    margin: 12px 0;
 }
 
 .error {
     color: #ffc1c1;
-    background: rgba(255,70,70,0.1);
-    border: 1px solid rgba(255,70,70,0.3);
+    background: rgba(255,70,70,.12);
 }
+
+.success {
+    color: #b7ffcf;
+    background: rgba(40,200,100,.12);
+}
+
+.muted { color: #c2cce5; }
+
+.center { text-align: center; }
+
+.grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 14px;
+    margin-top: 20px;
+}
+
+.tile {
+    padding: 18px;
+    border-radius: 14px;
+    background: rgba(255,255,255,.06);
+    border: 1px solid rgba(255,255,255,.1);
+}
+
+.hero { text-align: center; }
+
+.logo {
+    width: 125px;
+    height: 125px;
+    object-fit: cover;
+    border-radius: 50%;
+    border: 3px solid #55eaff;
+    box-shadow: 0 0 25px rgba(85,234,255,.3);
+}
+
+.typing {
+    min-height: 32px;
+    color: #55eaff;
+    font-size: 21px;
+    font-weight: bold;
+}
+
+.cursor { animation: blink .7s infinite; }
+
+@keyframes blink { 50% { opacity: 0; } }
 
 footer {
-    padding: 28px 10px 10px;
-    color: var(--muted);
+    margin: 28px 0 10px;
+    text-align: center;
     font-size: 13px;
-    line-height: 1.8;
+    color: #c2cce5;
 }
 
-#back-to-top {
-    position: fixed;
-    right: 18px;
-    bottom: 18px;
-    width: 46px;
-    height: 46px;
-    border: 1px solid rgba(255,255,255,0.2);
-    border-radius: 50%;
-    background: rgba(85,234,255,0.2);
-    color: white;
-    font-size: 22px;
-    cursor: pointer;
-    z-index: 5;
-    display: none;
-    backdrop-filter: blur(8px);
-}
-
-#back-to-top.visible {
-    display: block;
-}
-
-#loader {
-    position: fixed;
-    inset: 0;
-    z-index: 100;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    background: #080d20;
-    transition: opacity 0.45s, visibility 0.45s;
-}
-
-#loader.hidden {
-    opacity: 0;
-    visibility: hidden;
-}
-
-.loader-ring {
-    width: 55px;
-    height: 55px;
-    border: 4px solid rgba(255,255,255,0.12);
-    border-top-color: var(--cyan);
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-}
-
-@keyframes spin {
-    to { transform: rotate(360deg); }
-}
-
-@keyframes typingBlink {
-    50% { opacity: 0; }
-}
-
-@keyframes logoGlow {
-    from { box-shadow: 0 0 15px rgba(85,234,255,0.25); }
-    to { box-shadow: 0 0 32px rgba(167,139,250,0.5); }
-}
-
-@keyframes fadeUp {
-    from { opacity: 0; transform: translateY(18px); }
-    to { opacity: 1; transform: translateY(0); }
-}
-
-@media (max-width: 600px) {
-    .content {
-        width: 94%;
-        padding-top: 18px;
-    }
-
-    .hero {
-        padding: 25px 13px;
-        border-radius: 22px;
-    }
-
-    .section {
-        padding: 22px 13px;
-    }
-
-    .social-grid {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 10px;
-    }
-
-    .social-card {
-        font-size: 14px;
-        min-height: 58px;
-    }
+@media (max-width: 480px) {
+    body { padding: 12px; }
+    .panel { padding: 20px 15px; }
+    .nav { gap: 8px; }
+    .nav a { padding: 9px 10px; font-size: 13px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after {
-        scroll-behavior: auto !important;
-        animation-duration: 0.01ms !important;
+        animation-duration: .01ms !important;
         animation-iteration-count: 1 !important;
-        transition-duration: 0.01ms !important;
     }
 }
 </style>
 </head>
 
 <body>
-<div id="loader" aria-label="Loading">
-    <div class="loader-ring"></div>
-</div>
+<nav class="nav">
+    <a href="{{ url_for('home') }}">Home</a>
 
-<canvas id="space-canvas"></canvas>
-<div class="mouse-glow" id="mouse-glow"></div>
+    {% if username %}
+        <a href="{{ url_for('dashboard') }}">Dashboard</a>
+        <a href="{{ url_for('logout') }}">Logout</a>
+    {% else %}
+        <a href="{{ url_for('login') }}">Login</a>
+        <a href="{{ url_for('signup') }}">Sign Up</a>
+    {% endif %}
+</nav>
 
-<main class="content">
-    <div class="topbar">
-        <button class="language-btn" id="language-btn"
-                type="button" onclick="toggleLanguage()">
-            English
-        </button>
-    </div>
+<main class="wrap">
+    <section class="panel">
+        {{ content | safe }}
+    </section>
+</main>
 
-    <section class="hero">
-        <img class="logo" src="/static/logo.png"
-             alt="MD Rifat Sheikh Logo"
+<footer>© 2026 MD Rifat Sheikh · Bangladesh 🇧🇩</footer>
+</body>
+</html>
+"""
+
+
+# ---------------- HOME PAGE ----------------
+
+@app.route("/", methods=["GET", "POST"])
+def home():
+    status = ""
+
+    if request.method == "POST":
+        verify_csrf()
+
+        name = request.form.get("name", "").strip()
+        email = request.form.get("email", "").strip()
+        message = request.form.get("message", "").strip()
+
+        if (
+            not name or not email or not message
+            or len(name) > 100
+            or len(email) > 254
+            or len(message) > 5000
+            or not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email)
+        ):
+            status = '<div class="notice error">Please check your form details.</div>'
+        else:
+            mail_user = os.environ.get("MAIL_USERNAME")
+            mail_pass = os.environ.get("MAIL_PASSWORD")
+
+            if not mail_user or not mail_pass:
+                status = '<div class="notice error">Email service is not configured yet.</div>'
+            else:
+                try:
+                    mail = EmailMessage()
+                    mail["Subject"] = f"Website message from {name}"
+                    mail["From"] = mail_user
+                    mail["To"] = EMAIL_TO
+                    mail["Reply-To"] = email
+                    mail.set_content(
+                        f"Name: {name}\nEmail: {email}\n\nMessage:\n{message}"
+                    )
+
+                    with smtplib.SMTP("smtp.gmail.com", 587, timeout=20) as server:
+                        server.starttls()
+                        server.login(mail_user, mail_pass)
+                        server.send_message(mail)
+
+                    status = '<div class="notice success">Message sent successfully!</div>'
+                except Exception:
+                    app.logger.exception("Contact email failed")
+                    status = '<div class="notice error">Message could not be sent. Please try later.</div>'
+
+    content = """
+    <div class="hero">
+        <img class="logo" src="/static/logo.png" alt="MD Rifat Sheikh"
              onerror="this.style.display='none'">
 
         <h1>MD Rifat Sheikh</h1>
+        <p class="typing"><span id="typed">Content Creator</span><span class="cursor"> |</span></p>
+        <p class="muted" id="welcome">Welcome to my official website ✨</p>
 
-        <p class="typing-line" aria-live="polite">
-            <span id="typing-text">কনটেন্ট ক্রিয়েটর</span><span class="typing-cursor">|</span>
-        </p>
-
-        <p class="subtitle" id="subtitle">
-            আমার অফিসিয়াল ওয়েবসাইটে স্বাগতম ✨
-        </p>
-
-        <div class="clock-box">
-            <div class="clock-label" id="clock-label">
-                বাংলাদেশের বর্তমান সময়
-            </div>
-            <div id="clock">--:--:--</div>
-            <div id="date">তারিখ লোড হচ্ছে...</div>
+        <div class="tile">
+            <p class="muted" id="clock-label">Bangladesh current time</p>
+            <h2 id="clock">--:--:--</h2>
+            <p id="date"></p>
         </div>
-    </section>
+    </div>
 
-    <section class="section">
-        <h2 id="social-heading">🌐 আমার সোশ্যাল মিডিয়া</h2>
+    <h2>🌐 My Social Media</h2>
+    <div class="grid">
+        <a class="button" href="https://www.facebook.com/share/1FwFV17jmB/"
+           target="_blank" rel="noopener noreferrer">Facebook</a>
 
-        <div class="social-grid">
-            <a class="social-card" href="https://www.facebook.com/share/1FwFV17jmB/"
-               target="_blank" rel="noopener noreferrer">
-                <span class="social-icon facebook">f</span>
-                <span>Facebook</span>
-            </a>
+        <a class="button" href="https://www.instagram.com/happy2538832?vrfl=MWg0YzRsd3lzZ3Fibw=="
+           target="_blank" rel="noopener noreferrer">Instagram</a>
 
-            <a class="social-card" href="https://www.instagram.com/happy2538832?vrfl=MWg0YzRsd3lzZ3Fibw=="
-               target="_blank" rel="noopener noreferrer">
-                <span class="social-icon instagram">◎</span>
-                <span>Instagram</span>
-            </a>
+        <a class="button" href="https://www.youtube.com/"
+           target="_blank" rel="noopener noreferrer">YouTube</a>
 
-            <a class="social-card" href="https://www.youtube.com/"
-               target="_blank" rel="noopener noreferrer">
-                <span class="social-icon youtube">▶</span>
-                <span>YouTube</span>
-            </a>
+        <a class="button" href="https://www.tiktok.com/"
+           target="_blank" rel="noopener noreferrer">TikTok</a>
 
-            <a class="social-card" href="https://www.tiktok.com/"
-               target="_blank" rel="noopener noreferrer">
-                <span class="social-icon tiktok">♪</span>
-                <span>TikTok</span>
-            </a>
+        <a class="button" href="https://www.whatsapp.com/"
+           target="_blank" rel="noopener noreferrer">WhatsApp</a>
+    </div>
 
-            <a class="social-card" href="https://www.whatsapp.com/"
-               target="_blank" rel="noopener noreferrer">
-                <span class="social-icon whatsapp">☏</span>
-                <span>WhatsApp</span>
-            </a>
-        </div>
-    </section>
+    <h2>📩 Contact Me</h2>
+    """ + status + """
+    <form method="POST" action="/">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
 
-    <section class="section">
-        <h2 id="contact-heading">📩 যোগাযোগ করুন</h2>
+        <label for="contact-name">Your name</label>
+        <input id="contact-name" name="name" maxlength="100" required>
 
-        <!-- STATUS -->
+        <label for="contact-email">Your email</label>
+        <input id="contact-email" name="email" type="email" maxlength="254" required>
 
-        <form class="contact-form" method="POST" action="/">
-            <input type="text" name="name" id="contact-name"
-                   placeholder="আপনার নাম" maxlength="100" required>
+        <label for="contact-message">Your message</label>
+        <textarea id="contact-message" name="message" maxlength="5000"
+                  rows="5" required></textarea>
 
-            <input type="email" name="email" id="contact-email"
-                   placeholder="আপনার ইমেইল" maxlength="254" required>
+        <button type="submit">Send Message ✉️</button>
+    </form>
 
-            <textarea name="message" id="contact-message"
-                      placeholder="আপনার মেসেজ লিখুন..."
-                      maxlength="5000" required></textarea>
+    <p class="center muted">Create an account to access your personal dashboard.</p>
 
-            <button class="submit-btn" id="submit-btn" type="submit">
-                মেসেজ পাঠান ✉️
-            </button>
-        </form>
-    </section>
+    <p class="center">
+        <a class="button" href="/signup">Create Account</a>
+        <a class="button" href="/login">Login</a>
+    </p>
 
-    <footer>
-        <p id="footer-text">© 2026 MD Rifat Sheikh. সর্বস্বত্ব সংরক্ষিত।</p>
-        <p>Made with ❤️ in Bangladesh 🇧🇩</p>
-    </footer>
-</main>
-
-<button id="back-to-top" type="button"
-        aria-label="Back to top" title="Back to top">↑</button>
-
-<script>
-let currentLanguage = "bn";
-
-/* Typing Animation */
-const typingWords = {
-    bn: [
-        "কনটেন্ট ক্রিয়েটর",
-        "আমার ওয়েবসাইটে স্বাগতম",
-        "স্বপ্ন দেখি, এগিয়ে যাই",
-        "MD Rifat Sheikh"
-    ],
-    en: [
+    <script>
+    const words = [
         "Content Creator",
         "Welcome to My Website",
         "Dream Big, Work Hard",
         "MD Rifat Sheikh"
-    ]
-};
+    ];
+    let wi = 0, ci = 0, deleting = false;
 
-let typingWordIndex = 0;
-let typingCharIndex = 0;
-let isDeleting = false;
-let typingTimer = null;
+    function typeLoop() {
+        const el = document.getElementById("typed");
+        if (!el) return;
 
-function runTypingAnimation() {
-    const element = document.getElementById("typing-text");
-    if (!element) return;
+        const word = words[wi];
+        el.textContent = word.substring(0, ci);
 
-    const words = typingWords[currentLanguage];
-    const word = words[typingWordIndex];
+        let delay = deleting ? 45 : 90;
 
-    element.textContent = word.substring(0, typingCharIndex);
-
-    let delay = isDeleting ? 45 : 90;
-
-    if (!isDeleting) {
-        typingCharIndex++;
-
-        if (typingCharIndex > word.length) {
-            typingCharIndex = word.length;
-            isDeleting = true;
+        if (!deleting && ci < word.length) {
+            ci++;
+        } else if (!deleting) {
+            deleting = true;
             delay = 1400;
+        } else if (ci > 0) {
+            ci--;
+        } else {
+            deleting = false;
+            wi = (wi + 1) % words.length;
         }
-    } else {
-        typingCharIndex--;
 
-        if (typingCharIndex < 0) {
-            typingCharIndex = 0;
-            isDeleting = false;
-            typingWordIndex = (typingWordIndex + 1) % words.length;
-        }
+        setTimeout(typeLoop, delay);
+    }
+    typeLoop();
+
+    function updateClock() {
+        const now = new Date();
+
+        document.getElementById("clock").textContent =
+            new Intl.DateTimeFormat("en-GB", {
+                timeZone: "Asia/Dhaka",
+                hour: "2-digit",
+                minute: "2-digit",
+                second: "2-digit",
+                hour12: true
+            }).format(now);
+
+        document.getElementById("date").textContent =
+            new Intl.DateTimeFormat("en-GB", {
+                timeZone: "Asia/Dhaka",
+                weekday: "long",
+                year: "numeric",
+                month: "long",
+                day: "numeric"
+            }).format(now);
     }
 
-    typingTimer = setTimeout(runTypingAnimation, delay);
-}
-
-function restartTypingAnimation() {
-    clearTimeout(typingTimer);
-    typingWordIndex = 0;
-    typingCharIndex = 0;
-    isDeleting = false;
-
-    const element = document.getElementById("typing-text");
-    if (element) element.textContent = "";
-
-    runTypingAnimation();
-}
-
-/* Bengali and English translations */
-const translations = {
-    bn: {
-        button: "English",
-        subtitle: "আমার অফিসিয়াল ওয়েবসাইটে স্বাগতম ✨",
-        clock: "বাংলাদেশের বর্তমান সময়",
-        dateLoading: "তারিখ লোড হচ্ছে...",
-        social: "🌐 আমার সোশ্যাল মিডিয়া",
-        contact: "📩 যোগাযোগ করুন",
-        name: "আপনার নাম",
-        email: "আপনার ইমেইল",
-        message: "আপনার মেসেজ লিখুন...",
-        send: "মেসেজ পাঠান ✉️",
-        footer: "© 2026 MD Rifat Sheikh. সর্বস্বত্ব সংরক্ষিত।"
-    },
-    en: {
-        button: "বাংলা",
-        subtitle: "Welcome to my official website ✨",
-        clock: "Current Bangladesh Time",
-        dateLoading: "Loading date...",
-        social: "🌐 My Social Media",
-        contact: "📩 Contact Me",
-        name: "Your name",
-        email: "Your email",
-        message: "Write your message...",
-        send: "Send Message ✉️",
-        footer: "© 2026 MD Rifat Sheikh. All rights reserved."
-    }
-};
-
-function applyLanguage() {
-    const t = translations[currentLanguage];
-
-    document.documentElement.lang = currentLanguage;
-    document.getElementById("language-btn").textContent = t.button;
-    document.getElementById("subtitle").textContent = t.subtitle;
-    document.getElementById("clock-label").textContent = t.clock;
-    document.getElementById("social-heading").textContent = t.social;
-    document.getElementById("contact-heading").textContent = t.contact;
-    document.getElementById("contact-name").placeholder = t.name;
-    document.getElementById("contact-email").placeholder = t.email;
-    document.getElementById("contact-message").placeholder = t.message;
-    document.getElementById("submit-btn").textContent = t.send;
-    document.getElementById("footer-text").textContent = t.footer;
-
-    restartTypingAnimation();
     updateClock();
-}
+    setInterval(updateClock, 1000);
+    </script>
+    """
 
-function toggleLanguage() {
-    currentLanguage = currentLanguage === "bn" ? "en" : "bn";
-    applyLanguage();
-}
+    return page("Home", content)
 
-/* Bangladesh live clock and date */
-function updateClock() {
-    const now = new Date();
 
-    document.getElementById("clock").textContent =
-        new Intl.DateTimeFormat("en-GB", {
-            timeZone: "Asia/Dhaka",
-            hour: "2-digit",
-            minute: "2-digit",
-            second: "2-digit",
-            hour12: true
-        }).format(now);
+# ---------------- SIGN UP ----------------
 
-    const locale = currentLanguage === "bn" ? "bn-BD" : "en-GB";
+@app.route("/signup", methods=["GET", "POST"])
+def signup():
+    if "user_id" in session:
+        return redirect(url_for("dashboard"))
 
-    document.getElementById("date").textContent =
-        new Intl.DateTimeFormat(locale, {
-            timeZone: "Asia/Dhaka",
-            weekday: "long",
-            year: "numeric",
-            month: "long",
-            day: "numeric"
-        }).format(now);
-}
+    error = ""
 
-/* Welcome message */
-function showWelcome() {
-    console.log("Welcome to MD Rifat Sheikh's website!");
-}
+    if request.method == "POST":
+        verify_csrf()
 
-/* Loading screen */
-window.addEventListener("load", function () {
-    setTimeout(function () {
-        document.getElementById("loader").classList.add("hidden");
-    }, 350);
-});
+        username = request.form.get("username", "").strip()
+        password = request.form.get("password", "")
+        confirm = request.form.get("confirm_password", "")
 
-/* Back to top button */
-const backToTop = document.getElementById("back-to-top");
+        if not re.fullmatch(r"[A-Za-z0-9_]{3,30}", username):
+            error = "Username must be 3–30 characters: letters, numbers, or underscore."
+        elif len(password) < 10 or len(password) > 128:
+            error = "Password must be 10–128 characters long."
+        elif password != confirm:
+            error = "Passwords do not match."
+        else:
+            password_hash = generate_password_hash(password, method="scrypt")
 
-window.addEventListener("scroll", function () {
-    if (window.scrollY > 300) {
-        backToTop.classList.add("visible");
-    } else {
-        backToTop.classList.remove("visible");
-    }
-});
+            try:
+                with get_db() as db:
+                    db.execute(
+                        "INSERT INTO users (username, password_hash) VALUES (?, ?)",
+                        (username, password_hash)
+                    )
 
-backToTop.addEventListener("click", function () {
-    window.scrollTo({ top: 0, behavior: "smooth" });
-});
+                return redirect(url_for("login", created="1"))
 
-/* Mouse glow */
-const glow = document.getElementById("mouse-glow");
+            except sqlite3.IntegrityError:
+                error = "That username is already taken. Choose another."
 
-if (window.matchMedia("(pointer: fine)").matches) {
-    window.addEventListener("mousemove", function (event) {
-        glow.style.left = event.clientX + "px";
-        glow.style.top = event.clientY + "px";
-    });
-} else {
-    glow.style.display = "none";
-}
+            except Exception:
+                app.logger.exception("Account creation failed")
+                error = "Account could not be created. Please try again."
 
-/* Animated star particles */
-const canvas = document.getElementById("space-canvas");
-const ctx = canvas.getContext("2d");
-let stars = [];
-let canvasWidth = 0;
-let canvasHeight = 0;
+    content = """
+    <h1>Create Account</h1>
+    <p class="center muted">Join MD Rifat Sheikh's website.</p>
+    """ + (f'<div class="notice error">{error}</div>' if error else "") + """
+    <form method="POST" action="/signup">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
 
-function resizeCanvas() {
-    const ratio = Math.min(window.devicePixelRatio || 1, 2);
+        <label for="username">Username</label>
+        <input id="username" name="username" autocomplete="username"
+               minlength="3" maxlength="30"
+               pattern="[A-Za-z0-9_]{3,30}"
+               title="Use 3–30 letters, numbers, or underscores."
+               required>
 
-    canvasWidth = window.innerWidth;
-    canvasHeight = window.innerHeight;
+        <label for="password">Password (at least 10 characters)</label>
+        <input id="password" name="password" type="password"
+               autocomplete="new-password" minlength="10"
+               maxlength="128" required>
 
-    canvas.width = canvasWidth * ratio;
-    canvas.height = canvasHeight * ratio;
-    canvas.style.width = canvasWidth + "px";
-    canvas.style.height = canvasHeight + "px";
+        <label for="confirm_password">Confirm password</label>
+        <input id="confirm_password" name="confirm_password"
+               type="password" autocomplete="new-password"
+               minlength="10" maxlength="128" required>
 
-    ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+        <button type="submit">Sign Up</button>
+    </form>
 
-    const count = Math.min(
-        100,
-        Math.max(35, Math.floor(canvasWidth / 12))
-    );
+    <p class="center">Already registered? <a href="/login">Login</a></p>
+    """
 
-    stars 
+    return page("Sign Up", content)
+
+
+# ---------------- LOGIN ----------------
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if "user_id" in session:
+        return redirect(url_for("dashboard"))
+
+    error = ""
+    success = (
+        '<div class="notice success">Account created. You can log in now.</div>'
+        if request.args.get("created") == "1" else ""
+    )
+
+    if request.method == "POST":
+        verify_csrf()
+
+        username = request.form.get("username", "").strip()
+        password = request.form.get("password", "")
+
+        try:
+            with get_db() as db:
+                user = db.execute(
+                    "SELECT id, username, password_hash FROM users "
+                    "WHERE username = ? COLLATE NOCASE",
+                    (username,)
+                ).fetchone()
+
+            if user and check_password_hash(user["password_hash"], password):
+                session.clear()
+                session["user_id"] = user["id"]
+                session["username"] = user["username"]
+                session["csrf_token"] = secrets.token_urlsafe(32)
+
+                return redirect(url_for("dashboard"))
+
+            error = "Incorrect username or password."
+
+        except Exception:
+            app.logger.exception("Login failed")
+            error = "Login is temporarily unavailable. Please try again."
+
+    content = """
+    <h1>Login</h1>
+    <p class="center muted">Sign in with your username and password.</p>
+    """ + success + (f'<div class="notice error">{error}</div>' if error else "") + """
+    <form method="POST" action="/login">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+        <label for="username">Username</label>
+        <input id="username" name="username" autocomplete="username"
+               maxlength="30" required>
+
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password"
+               autocomplete="current-password"
+               maxlength="128" required>
+
+        <button type="submit">Login 🔐</button>
+    </form>
+
+    <p class="center">Don't have an account? <a href="/signup">Sign Up</a></p>
+    """
+
+    return page("Login", content)
+
+
+# ---------------- PRIVATE DASHBOARD ----------------
+
+@app.route("/dashboard")
+@login_required
+def dashboard():
+    # Always retrieve the account from the database.
+    with get_db() as db:
+        user = db.execute(
+            "SELECT username, created_at FROM users WHERE id = ?",
+            (session["user_id"],)
+        ).fetchone()
+
+    if user is None:
+        session.clear()
+        return redirect(url_for("login"))
+
+    content = """
+    <h1>Welcome, {{ account.username }}! 🎉</h1>
+    <p class="center muted">You are successfully logged in.</p>
+
+    <div class="grid">
+        <div class="tile">
+            <h2>👤 Account</h2>
+            <p>Username: <strong>{{ account.username }}</strong></p>
+        </div>
+
+        <div class="tile">
+            <h2>🔐 Security</h2>
+            <p>Your password is stored as a secure hash, not as plain text.</p>
+        </div>
+    </div>
+
+    <p class="center" style="margin-top:25px">
+        <a class="button" href="/">Visit Home Page</a>
+    </p>
+
+    <form method="POST" action="/logout" style="margin-top:20px">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit">Logout</button>
+    </form>
+    """
+
+    return page("Dashboard", content, account=user)
+
+
+# ---------------- LOGOUT ----------------
+
+@app.route("/logout", methods=["GET", "POST"])
+def logout():
+    if request.method == "GET":
+        if "user_id" not in session:
+            return redirect(url_for("login"))
+
+        content = """
+        <h1>Logout</h1>
+        <p class="center">Are you sure you want to log out?</p>
+
+        <form method="POST" action="/logout">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit">Confirm Logout</button>
+        </form>
+        """
+        return page("Logout", content)
+
+    verify_csrf()
+    session.clear()
+    return redirect(url_for("home"))
+
+
+# ---------------- ERROR HANDLERS ----------------
+
+@app.errorhandler(400)
+def bad_request(error):
+    return page(
+        "Request Error",
+        '<h1>Request Error</h1>'
+        '<p class="center">Your form expired or was invalid. '
+        '<a href="/">Return home</a> and try again.</p>'
+    ), 400
+
+
+@app.errorhandler(404)
+def not_found(error):
+    return page(
+        "Not Found",
+        '<h1>Page Not Found</h1>'
+        '<p class="center"><a href="/">Return Home</a></p>'
+    ), 404
+
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", "10000"))
+    app.run(host="0.0.0.0", port=port)
+    
