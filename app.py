@@ -1,3 +1,4 @@
+
 import os
 import re
 import hmac
@@ -14,17 +15,20 @@ from flask import (
     render_template_string, abort
 )
 from werkzeug.security import generate_password_hash, check_password_hash
-
+from markupsafe import escape
 
 app = Flask(__name__)
 
-# Set SECRET_KEY in Render Environment Variables.
+# Render Environment Variables
 app.secret_key = os.environ.get("SECRET_KEY") or secrets.token_hex(32)
-
-# On Render, set DB_PATH=/var/data/users.db
 DB_PATH = os.environ.get("DB_PATH", "users.db")
-
 EMAIL_TO = "mdrifatsheikh470@gmail.com"
+
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_SECURE=os.environ.get("RENDER") is not None,
+)
 
 
 # ---------------- DATABASE ----------------
@@ -65,12 +69,10 @@ def verify_csrf():
     supplied = request.form.get("csrf_token", "")
     expected = session.get("csrf_token", "")
 
-    if (
-        not supplied
-        or not expected
-        or not hmac.compare_digest(supplied, expected)
+    if not supplied or not expected or not hmac.compare_digest(
+        supplied, expected
     ):
-        abort(400, description="Invalid form token. Please reload the page.")
+        abort(400)
 
     return True
 
@@ -79,19 +81,29 @@ def login_required(view):
     @wraps(view)
     def wrapped(*args, **kwargs):
         if "user_id" not in session:
-            return redirect(url_for("login", next="dashboard"))
+            return redirect(
+                url_for("login", next=request.endpoint or "dashboard")
+            )
         return view(*args, **kwargs)
     return wrapped
 
 
+# Render the page content FIRST, so form tokens and account details work.
 def page(title, content, **context):
+    token = csrf_token()
+
+    rendered_content = render_template_string(
+        content,
+        csrf_token=token,
+        username=session.get("username"),
+        **context
+    )
+
     return render_template_string(
         BASE_TEMPLATE,
         title=title,
-        content=content,
-        csrf_token=csrf_token(),
-        username=session.get("username"),
-        **context
+        content=rendered_content,
+        username=session.get("username")
     )
 
 
@@ -163,7 +175,6 @@ h1, h2 {
 }
 
 h1 { font-size: clamp(26px, 5vw, 38px); }
-
 p { line-height: 1.7; }
 
 form { display: grid; gap: 14px; }
@@ -219,7 +230,6 @@ button:hover, .button:hover { filter: brightness(1.1); }
 }
 
 .muted { color: #c2cce5; }
-
 .center { text-align: center; }
 
 .grid {
@@ -255,7 +265,6 @@ button:hover, .button:hover { filter: brightness(1.1); }
 }
 
 .cursor { animation: blink .7s infinite; }
-
 @keyframes blink { 50% { opacity: 0; } }
 
 footer {
@@ -283,9 +292,8 @@ footer {
 
 <body>
 <nav class="nav">
-    <a href="{{ url_for('home') }}">Home</a>
-
     {% if username %}
+        <a href="{{ url_for('home') }}">Home</a>
         <a href="{{ url_for('dashboard') }}">Dashboard</a>
         <a href="{{ url_for('logout') }}">Logout</a>
     {% else %}
@@ -306,9 +314,10 @@ footer {
 """
 
 
-# ---------------- HOME PAGE ----------------
+# ---------------- HOME: LOGIN REQUIRED ----------------
 
 @app.route("/", methods=["GET", "POST"])
+@login_required
 def home():
     status = ""
 
@@ -326,17 +335,23 @@ def home():
             or len(message) > 5000
             or not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email)
         ):
-            status = '<div class="notice error">Please check your form details.</div>'
+            status = (
+                '<div class="notice error">'
+                'Please check your form details.</div>'
+            )
         else:
             mail_user = os.environ.get("MAIL_USERNAME")
             mail_pass = os.environ.get("MAIL_PASSWORD")
 
             if not mail_user or not mail_pass:
-                status = '<div class="notice error">Email service is not configured yet.</div>'
+                status = (
+                    '<div class="notice error">'
+                    'Email service is not configured yet.</div>'
+                )
             else:
                 try:
                     mail = EmailMessage()
-                    mail["Subject"] = f"Website message from {name}"
+                    mail["Subject"] = "Website message from " + name
                     mail["From"] = mail_user
                     mail["To"] = EMAIL_TO
                     mail["Reply-To"] = email
@@ -344,15 +359,23 @@ def home():
                         f"Name: {name}\nEmail: {email}\n\nMessage:\n{message}"
                     )
 
-                    with smtplib.SMTP("smtp.gmail.com", 587, timeout=20) as server:
+                    with smtplib.SMTP(
+                        "smtp.gmail.com", 587, timeout=20
+                    ) as server:
                         server.starttls()
                         server.login(mail_user, mail_pass)
                         server.send_message(mail)
 
-                    status = '<div class="notice success">Message sent successfully!</div>'
+                    status = (
+                        '<div class="notice success">'
+                        'Message sent successfully!</div>'
+                    )
                 except Exception:
                     app.logger.exception("Contact email failed")
-                    status = '<div class="notice error">Message could not be sent. Please try later.</div>'
+                    status = (
+                        '<div class="notice error">'
+                        'Message could not be sent. Please try later.</div>'
+                    )
 
     content = """
     <div class="hero">
@@ -361,10 +384,10 @@ def home():
 
         <h1>MD Rifat Sheikh</h1>
         <p class="typing"><span id="typed">Content Creator</span><span class="cursor"> |</span></p>
-        <p class="muted" id="welcome">Welcome to my official website ✨</p>
+        <p class="muted">Welcome to my official website ✨</p>
 
         <div class="tile">
-            <p class="muted" id="clock-label">Bangladesh current time</p>
+            <p class="muted">Bangladesh current time</p>
             <h2 id="clock">--:--:--</h2>
             <p id="date"></p>
         </div>
@@ -406,13 +429,6 @@ def home():
         <button type="submit">Send Message ✉️</button>
     </form>
 
-    <p class="center muted">Create an account to access your personal dashboard.</p>
-
-    <p class="center">
-        <a class="button" href="/signup">Create Account</a>
-        <a class="button" href="/login">Login</a>
-    </p>
-
     <script>
     const words = [
         "Content Creator",
@@ -428,7 +444,6 @@ def home():
 
         const word = words[wi];
         el.textContent = word.substring(0, ci);
-
         let delay = deleting ? 45 : 90;
 
         if (!deleting && ci < word.length) {
@@ -477,7 +492,7 @@ def home():
     return page("Home", content)
 
 
-# ---------------- SIGN UP ----------------
+# ---------------- SIGN UP: PUBLIC ----------------
 
 @app.route("/signup", methods=["GET", "POST"])
 def signup():
@@ -500,7 +515,9 @@ def signup():
         elif password != confirm:
             error = "Passwords do not match."
         else:
-            password_hash = generate_password_hash(password, method="scrypt")
+            password_hash = generate_password_hash(
+                password, method="scrypt"
+            )
 
             try:
                 with get_db() as db:
@@ -508,7 +525,6 @@ def signup():
                         "INSERT INTO users (username, password_hash) VALUES (?, ?)",
                         (username, password_hash)
                     )
-
                 return redirect(url_for("login", created="1"))
 
             except sqlite3.IntegrityError:
@@ -521,16 +537,17 @@ def signup():
     content = """
     <h1>Create Account</h1>
     <p class="center muted">Join MD Rifat Sheikh's website.</p>
-    """ + (f'<div class="notice error">{error}</div>' if error else "") + """
+    {% if error %}
+        <div class="notice error">{{ error }}</div>
+    {% endif %}
+
     <form method="POST" action="/signup">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
 
         <label for="username">Username</label>
         <input id="username" name="username" autocomplete="username"
                minlength="3" maxlength="30"
-               pattern="[A-Za-z0-9_]{3,30}"
-               title="Use 3–30 letters, numbers, or underscores."
-               required>
+               pattern="[A-Za-z0-9_]{3,30}" required>
 
         <label for="password">Password (at least 10 characters)</label>
         <input id="password" name="password" type="password"
@@ -548,10 +565,10 @@ def signup():
     <p class="center">Already registered? <a href="/login">Login</a></p>
     """
 
-    return page("Sign Up", content)
+    return page("Sign Up", content, error=error)
 
 
-# ---------------- LOGIN ----------------
+# ---------------- LOGIN: PUBLIC ----------------
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
@@ -560,9 +577,18 @@ def login():
 
     error = ""
     success = (
-        '<div class="notice success">Account created. You can log in now.</div>'
-        if request.args.get("created") == "1" else ""
+        request.args.get("created") == "1"
     )
+
+    next_endpoint = (
+        request.form.get("next")
+        or request.args.get("next")
+        or "dashboard"
+    )
+
+    # Only allow redirects to these internal pages.
+    if next_endpoint not in ("home", "dashboard"):
+        next_endpoint = "dashboard"
 
     if request.method == "POST":
         verify_csrf()
@@ -578,13 +604,15 @@ def login():
                     (username,)
                 ).fetchone()
 
-            if user and check_password_hash(user["password_hash"], password):
+            if user and check_password_hash(
+                user["password_hash"], password
+            ):
                 session.clear()
                 session["user_id"] = user["id"]
                 session["username"] = user["username"]
                 session["csrf_token"] = secrets.token_urlsafe(32)
 
-                return redirect(url_for("dashboard"))
+                return redirect(url_for(next_endpoint))
 
             error = "Incorrect username or password."
 
@@ -595,9 +623,18 @@ def login():
     content = """
     <h1>Login</h1>
     <p class="center muted">Sign in with your username and password.</p>
-    """ + success + (f'<div class="notice error">{error}</div>' if error else "") + """
+
+    {% if success %}
+        <div class="notice success">Account created. You can log in now.</div>
+    {% endif %}
+
+    {% if error %}
+        <div class="notice error">{{ error }}</div>
+    {% endif %}
+
     <form method="POST" action="/login">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="next" value="{{ next_endpoint }}">
 
         <label for="username">Username</label>
         <input id="username" name="username" autocomplete="username"
@@ -614,7 +651,13 @@ def login():
     <p class="center">Don't have an account? <a href="/signup">Sign Up</a></p>
     """
 
-    return page("Login", content)
+    return page(
+        "Login",
+        content,
+        error=error,
+        success=success,
+        next_endpoint=next_endpoint
+    )
 
 
 # ---------------- PRIVATE DASHBOARD ----------------
@@ -622,7 +665,6 @@ def login():
 @app.route("/dashboard")
 @login_required
 def dashboard():
-    # Always retrieve the account from the database.
     with get_db() as db:
         user = db.execute(
             "SELECT username, created_at FROM users WHERE id = ?",
@@ -634,13 +676,13 @@ def dashboard():
         return redirect(url_for("login"))
 
     content = """
-    <h1>Welcome, {{ account.username }}! 🎉</h1>
+    <h1>Welcome, {{ account['username'] }}! 🎉</h1>
     <p class="center muted">You are successfully logged in.</p>
 
     <div class="grid">
         <div class="tile">
             <h2>👤 Account</h2>
-            <p>Username: <strong>{{ account.username }}</strong></p>
+            <p>Username: <strong>{{ account['username'] }}</strong></p>
         </div>
 
         <div class="tile">
@@ -666,10 +708,10 @@ def dashboard():
 
 @app.route("/logout", methods=["GET", "POST"])
 def logout():
-    if request.method == "GET":
-        if "user_id" not in session:
-            return redirect(url_for("login"))
+    if "user_id" not in session:
+        return redirect(url_for("login"))
 
+    if request.method == "GET":
         content = """
         <h1>Logout</h1>
         <p class="center">Are you sure you want to log out?</p>
@@ -683,7 +725,7 @@ def logout():
 
     verify_csrf()
     session.clear()
-    return redirect(url_for("home"))
+    return redirect(url_for("login"))
 
 
 # ---------------- ERROR HANDLERS ----------------
@@ -694,20 +736,9 @@ def bad_request(error):
         "Request Error",
         '<h1>Request Error</h1>'
         '<p class="center">Your form expired or was invalid. '
-        '<a href="/">Return home</a> and try again.</p>'
+        '<a href="/">Please log in and try again.</a></p>'
     ), 400
 
 
 @app.errorhandler(404)
-def not_found(error):
-    return page(
-        "Not Found",
-        '<h1>Page Not Found</h1>'
-        '<p class="center"><a href="/">Return Home</a></p>'
-    ), 404
-
-
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", "10000"))
-    app.run(host="0.0.0.0", port=port)
-    
+de
