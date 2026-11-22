@@ -1,4 +1,3 @@
-
 import os
 import re
 import hmac
@@ -15,11 +14,10 @@ from flask import (
     render_template_string, abort
 )
 from werkzeug.security import generate_password_hash, check_password_hash
-from markupsafe import escape
 
 app = Flask(__name__)
 
-# Render Environment Variables
+# Environment settings
 app.secret_key = os.environ.get("SECRET_KEY") or secrets.token_hex(32)
 DB_PATH = os.environ.get("DB_PATH", "users.db")
 EMAIL_TO = "mdrifatsheikh470@gmail.com"
@@ -36,7 +34,6 @@ app.config.update(
 def get_db():
     path = Path(DB_PATH)
     path.parent.mkdir(parents=True, exist_ok=True)
-
     db = sqlite3.connect(str(path), timeout=15)
     db.row_factory = sqlite3.Row
     return db
@@ -74,8 +71,6 @@ def verify_csrf():
     ):
         abort(400)
 
-    return True
-
 
 def login_required(view):
     @wraps(view)
@@ -88,26 +83,7 @@ def login_required(view):
     return wrapped
 
 
-# Render the page content FIRST, so form tokens and account details work.
-def page(title, content, **context):
-    token = csrf_token()
-
-    rendered_content = render_template_string(
-        content,
-        csrf_token=token,
-        username=session.get("username"),
-        **context
-    )
-
-    return render_template_string(
-        BASE_TEMPLATE,
-        title=title,
-        content=rendered_content,
-        username=session.get("username")
-    )
-
-
-# ---------------- SHARED DESIGN ----------------
+# ---------------- SHARED TEMPLATE ----------------
 
 BASE_TEMPLATE = r"""
 <!DOCTYPE html>
@@ -176,9 +152,7 @@ h1, h2 {
 
 h1 { font-size: clamp(26px, 5vw, 38px); }
 p { line-height: 1.7; }
-
 form { display: grid; gap: 14px; }
-
 label { font-size: 14px; color: #d4def4; }
 
 input, textarea {
@@ -274,11 +248,41 @@ footer {
     color: #c2cce5;
 }
 
+/* Telegram Support Button */
+.telegram-support {
+    position: fixed;
+    right: 20px;
+    bottom: 20px;
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 13px 18px;
+    border-radius: 50px;
+    background: #229ED9;
+    color: white;
+    text-decoration: none;
+    font-weight: bold;
+    box-shadow: 0 5px 20px rgba(0,0,0,.35);
+    transition: transform .2s, background .2s;
+}
+
+.telegram-support:hover {
+    background: #168ac0;
+    transform: translateY(-3px);
+}
+
 @media (max-width: 480px) {
     body { padding: 12px; }
     .panel { padding: 20px 15px; }
     .nav { gap: 8px; }
     .nav a { padding: 9px 10px; font-size: 13px; }
+
+    .telegram-support {
+        right: 12px;
+        bottom: 12px;
+        padding: 12px 15px;
+    }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -309,12 +313,39 @@ footer {
 </main>
 
 <footer>© 2026 MD Rifat Sheikh · Bangladesh 🇧🇩</footer>
+
+{% if username %}
+<a class="telegram-support"
+   href="https://t.me/rifatbys"
+   target="_blank"
+   rel="noopener noreferrer"
+   aria-label="Contact Telegram Support">
+    ✈️ Telegram Support
+</a>
+{% endif %}
+
 </body>
 </html>
 """
 
 
-# ---------------- HOME: LOGIN REQUIRED ----------------
+def page(title, content, **context):
+    rendered_content = render_template_string(
+        content,
+        csrf_token=csrf_token(),
+        username=session.get("username"),
+        **context
+    )
+
+    return render_template_string(
+        BASE_TEMPLATE,
+        title=title,
+        content=rendered_content,
+        username=session.get("username")
+    )
+
+
+# ---------------- HOME PAGE ----------------
 
 @app.route("/", methods=["GET", "POST"])
 @login_required
@@ -379,11 +410,17 @@ def home():
 
     content = """
     <div class="hero">
-        <img class="logo" src="/static/logo.png" alt="MD Rifat Sheikh"
+        <img class="logo" src="/static/logo.png"
+             alt="MD Rifat Sheikh"
              onerror="this.style.display='none'">
 
         <h1>MD Rifat Sheikh</h1>
-        <p class="typing"><span id="typed">Content Creator</span><span class="cursor"> |</span></p>
+
+        <p class="typing">
+            <span id="typed">Content Creator</span>
+            <span class="cursor"> |</span>
+        </p>
+
         <p class="muted">Welcome to my official website ✨</p>
 
         <div class="tile">
@@ -394,37 +431,48 @@ def home():
     </div>
 
     <h2>🌐 My Social Media</h2>
+
     <div class="grid">
-        <a class="button" href="https://www.facebook.com/share/1FwFV17jmB/"
+        <a class="button"
+           href="https://www.facebook.com/share/1FwFV17jmB/"
            target="_blank" rel="noopener noreferrer">Facebook</a>
 
-        <a class="button" href="https://www.instagram.com/happy2538832?vrfl=MWg0YzRsd3lzZ3Fibw=="
+        <a class="button"
+           href="https://www.instagram.com/happy2538832?vrfl=MWg0YzRsd3lzZ3Fibw=="
            target="_blank" rel="noopener noreferrer">Instagram</a>
 
-        <a class="button" href="https://www.youtube.com/"
+        <a class="button"
+           href="https://www.youtube.com/"
            target="_blank" rel="noopener noreferrer">YouTube</a>
 
-        <a class="button" href="https://www.tiktok.com/"
+        <a class="button"
+           href="https://www.tiktok.com/"
            target="_blank" rel="noopener noreferrer">TikTok</a>
 
-        <a class="button" href="https://www.whatsapp.com/"
+        <a class="button"
+           href="https://www.whatsapp.com/"
            target="_blank" rel="noopener noreferrer">WhatsApp</a>
     </div>
 
     <h2>📩 Contact Me</h2>
+
     """ + status + """
+
     <form method="POST" action="/">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="csrf_token"
+               value="{{ csrf_token }}">
 
         <label for="contact-name">Your name</label>
-        <input id="contact-name" name="name" maxlength="100" required>
+        <input id="contact-name" name="name"
+               maxlength="100" required>
 
         <label for="contact-email">Your email</label>
-        <input id="contact-email" name="email" type="email" maxlength="254" required>
+        <input id="contact-email" name="email"
+               type="email" maxlength="254" required>
 
         <label for="contact-message">Your message</label>
-        <textarea id="contact-message" name="message" maxlength="5000"
-                  rows="5" required></textarea>
+        <textarea id="contact-message" name="message"
+                  maxlength="5000" rows="5" required></textarea>
 
         <button type="submit">Send Message ✉️</button>
     </form>
@@ -436,6 +484,7 @@ def home():
         "Dream Big, Work Hard",
         "MD Rifat Sheikh"
     ];
+
     let wi = 0, ci = 0, deleting = false;
 
     function typeLoop() {
@@ -460,6 +509,7 @@ def home():
 
         setTimeout(typeLoop, delay);
     }
+
     typeLoop();
 
     function updateClock() {
@@ -492,7 +542,7 @@ def home():
     return page("Home", content)
 
 
-# ---------------- SIGN UP: PUBLIC ----------------
+# ---------------- SIGN UP ----------------
 
 @app.route("/signup", methods=["GET", "POST"])
 def signup():
@@ -509,7 +559,10 @@ def signup():
         confirm = request.form.get("confirm_password", "")
 
         if not re.fullmatch(r"[A-Za-z0-9_]{3,30}", username):
-            error = "Username must be 3–30 characters: letters, numbers, or underscore."
+            error = (
+                "Username must be 3–30 characters: "
+                "letters, numbers, or underscore."
+            )
         elif len(password) < 10 or len(password) > 128:
             error = "Password must be 10–128 characters long."
         elif password != confirm:
@@ -522,9 +575,11 @@ def signup():
             try:
                 with get_db() as db:
                     db.execute(
-                        "INSERT INTO users (username, password_hash) VALUES (?, ?)",
+                        "INSERT INTO users (username, password_hash) "
+                        "VALUES (?, ?)",
                         (username, password_hash)
                     )
+
                 return redirect(url_for("login", created="1"))
 
             except sqlite3.IntegrityError:
@@ -537,22 +592,25 @@ def signup():
     content = """
     <h1>Create Account</h1>
     <p class="center muted">Join MD Rifat Sheikh's website.</p>
+
     {% if error %}
         <div class="notice error">{{ error }}</div>
     {% endif %}
 
     <form method="POST" action="/signup">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="csrf_token"
+               value="{{ csrf_token }}">
 
         <label for="username">Username</label>
-        <input id="username" name="username" autocomplete="username"
+        <input id="username" name="username"
+               autocomplete="username"
                minlength="3" maxlength="30"
                pattern="[A-Za-z0-9_]{3,30}" required>
 
         <label for="password">Password (at least 10 characters)</label>
         <input id="password" name="password" type="password"
-               autocomplete="new-password" minlength="10"
-               maxlength="128" required>
+               autocomplete="new-password"
+               minlength="10" maxlength="128" required>
 
         <label for="confirm_password">Confirm password</label>
         <input id="confirm_password" name="confirm_password"
@@ -562,13 +620,15 @@ def signup():
         <button type="submit">Sign Up</button>
     </form>
 
-    <p class="center">Already registered? <a href="/login">Login</a></p>
+    <p class="center">
+        Already registered? <a href="/login">Login</a>
+    </p>
     """
 
     return page("Sign Up", content, error=error)
 
 
-# ---------------- LOGIN: PUBLIC ----------------
+# ---------------- LOGIN ----------------
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
@@ -576,9 +636,7 @@ def login():
         return redirect(url_for("dashboard"))
 
     error = ""
-    success = (
-        request.args.get("created") == "1"
-    )
+    success = request.args.get("created") == "1"
 
     next_endpoint = (
         request.form.get("next")
@@ -586,7 +644,6 @@ def login():
         or "dashboard"
     )
 
-    # Only allow redirects to these internal pages.
     if next_endpoint not in ("home", "dashboard"):
         next_endpoint = "dashboard"
 
@@ -622,10 +679,14 @@ def login():
 
     content = """
     <h1>Login</h1>
-    <p class="center muted">Sign in with your username and password.</p>
+    <p class="center muted">
+        Sign in with your username and password.
+    </p>
 
     {% if success %}
-        <div class="notice success">Account created. You can log in now.</div>
+        <div class="notice success">
+            Account created. You can log in now.
+        </div>
     {% endif %}
 
     {% if error %}
@@ -633,22 +694,27 @@ def login():
     {% endif %}
 
     <form method="POST" action="/login">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        <input type="hidden" name="next" value="{{ next_endpoint }}">
+        <input type="hidden" name="csrf_token"
+               value="{{ csrf_token }}">
+        <input type="hidden" name="next"
+               value="{{ next_endpoint }}">
 
         <label for="username">Username</label>
-        <input id="username" name="username" autocomplete="username"
+        <input id="username" name="username"
+               autocomplete="username"
                maxlength="30" required>
 
         <label for="password">Password</label>
-        <input id="password" name="password" type="password"
-               autocomplete="current-password"
+        <input id="password" name="password"
+               type="password" autocomplete="current-password"
                maxlength="128" required>
 
         <button type="submit">Login 🔐</button>
     </form>
 
-    <p class="center">Don't have an account? <a href="/signup">Sign Up</a></p>
+    <p class="center">
+        Don't have an account? <a href="/signup">Sign Up</a>
+    </p>
     """
 
     return page(
@@ -682,12 +748,18 @@ def dashboard():
     <div class="grid">
         <div class="tile">
             <h2>👤 Account</h2>
-            <p>Username: <strong>{{ account['username'] }}</strong></p>
+            <p>
+                Username:
+                <strong>{{ account['username'] }}</strong>
+            </p>
         </div>
 
         <div class="tile">
             <h2>🔐 Security</h2>
-            <p>Your password is stored as a secure hash, not as plain text.</p>
+            <p>
+                Your password is stored as a secure hash,
+                not as plain text.
+            </p>
         </div>
     </div>
 
@@ -696,60 +768,7 @@ def dashboard():
     </p>
 
     <form method="POST" action="/logout" style="margin-top:20px">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="csrf_token"
+               value="{{ csrf_token }}">
         <button type="submit">Logout</button>
-    </form>
-    """
-
-    return page("Dashboard", content, account=user)
-
-
-# ---------------- LOGOUT ----------------
-
-@app.route("/logout", methods=["GET", "POST"])
-def logout():
-    if "user_id" not in session:
-        return redirect(url_for("login"))
-
-    if request.method == "GET":
-        content = """
-        <h1>Logout</h1>
-        <p class="center">Are you sure you want to log out?</p>
-
-        <form method="POST" action="/logout">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <button type="submit">Confirm Logout</button>
-        </form>
-        """
-        return page("Logout", content)
-
-    verify_csrf()
-    session.clear()
-    return redirect(url_for("login"))
-
-
-# ---------------- ERROR HANDLERS ----------------
-
-@app.errorhandler(400)
-def bad_request(error):
-    return page(
-        "Request Error",
-        '<h1>Request Error</h1>'
-        '<p class="center">Your form expired or was invalid. '
-        '<a href="/">Please log in and try again.</a></p>'
-    ), 400
-
-
-@app.errorhandler(404)
-def not_found(error):
-    return page(
-        "Not Found",
-        '<h1>Page Not Found</h1>'
-        '<p class="center"><a href="/">Return Home</a></p>'
-    ), 404
-
-
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", "10000"))
-    app.run(host="0.0.0.0", port=port)
-    
+    <
